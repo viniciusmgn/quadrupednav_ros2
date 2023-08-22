@@ -1,0 +1,48 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/vinicius/catkin_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/vinicius/catkin_ws/src/champ/robots/configs/a1_config/include/**",
+        "/home/vinicius/catkin_ws/src/champ/robots/configs/b1_config/include/**",
+        "/home/vinicius/catkin_ws/src/champ/champ/include/**",
+        "/home/vinicius/catkin_ws/src/champ/champ_base/include/**",
+        "/home/vinicius/catkin_ws/src/champ/champ_config/include/**",
+        "/home/vinicius/catkin_ws/src/crazyflie_ros/crazyflie_cpp/include/**",
+        "/home/vinicius/catkin_ws/src/FAST_LIO/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/gazebo-pkgs/gazebo_grasp_plugin/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/gazebo-pkgs/gazebo_state_plugins/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/gazebo-pkgs/gazebo_test_tools/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/gazebo-pkgs/gazebo_version_helpers/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/gazebo-pkgs/gazebo_world_plugin_loader/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/lidar_simulator/lidar_gazebo_plugins/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/mav_comm/mav_msgs/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/mav_comm/mav_planning_msgs/include/**",
+        "/home/vinicius/catkin_ws/src/AeRoSim/general-message-pkgs/object_msgs_tools/include/**",
+        "/home/vinicius/catkin_ws/src/champ/octomap_rviz_plugins/include/**",
+        "/home/vinicius/catkin_ws/src/champ/robots/configs/spot_config/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_bullet/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_eigen/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_geometry_msgs/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_kdl/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_msgs/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_ros/include/**",
+        "/home/vinicius/catkin_ws/src/geometry2/tf2_sensor_msgs/include/**",
+        "/home/vinicius/catkin_ws/src/yocs_velocity_smoother/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

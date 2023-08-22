@@ -1,0 +1,147 @@
+    int N = 2000;
+    vector<VectorXd> path;
+    for (int i = 0; i < N; i++)
+    {
+        double theta = i * (2 * 3.14) / ((double)N);
+        VectorXd p = VectorXd::Zero(2);
+        p << 2.5 + 2.5 * cos(theta), 2.5 * sin(theta);
+        path.push_back(p);
+    }   
+   
+   
+   vector<VectorXd> pointTest;
+    for (int k = 0; k < 100; k++)
+    {
+        VectorXd p = randVec(3, -0.5, 0.5);
+        pointTest.push_back(p);
+    }
+
+    double delta = 0.001;
+    Parameters param;
+    param.boundingHeight=1;
+    param.boundingRadius=0.4;
+    param.smoothingParam=0.3;
+
+    for (int k = 0; k < 20; k++)
+    {
+        RobotPose pose;
+        pose.position = randVec(3, -3, 3);
+        pose.orientation = rand(0, 2 * 3.14);
+        DistanceResult dr = computeDist(pointTest, pose, param);
+
+        RobotPose posex;
+        posex.position = VectorXd::Zero(3);
+        posex.position << pose.position[0] + delta, pose.position[1], pose.position[2];
+        posex.orientation = pose.orientation;
+        DistanceResult drx = computeDist(pointTest, posex, param);
+
+        RobotPose posey;
+        posey.position = VectorXd::Zero(3);
+        posey.position << pose.position[0], pose.position[1] + delta, pose.position[2];
+        posey.orientation = pose.orientation;
+        DistanceResult dry = computeDist(pointTest, posey, param);
+
+        RobotPose posez;
+        posez.position = VectorXd::Zero(3);
+        posez.position << pose.position[0], pose.position[1], pose.position[2] + delta;
+        posez.orientation = pose.orientation;
+        DistanceResult drz = computeDist(pointTest, posez, param);
+
+        RobotPose posetheta;
+        posetheta.position = VectorXd::Zero(3);
+        posetheta.position << pose.position[0], pose.position[1], pose.position[2];
+        posetheta.orientation = pose.orientation + delta;
+        DistanceResult drtheta = computeDist(pointTest, posetheta, param);
+
+        VectorXd gradPCalc = VectorXd::Zero(3);
+        gradPCalc << (drx.safety-dr.safety)/delta, (dry.safety-dr.safety)/delta, (drz.safety-dr.safety)/delta;
+        double gradTCalc = (drtheta.safety-dr.safety)/delta;
+
+        ROS_INFO_STREAM("------------");
+        ROS_INFO_STREAM("gradP (ana) = "<<printVector(dr.gradSafetyPosition));
+        ROS_INFO_STREAM("gradP (cal) = "<<printVector(gradPCalc));
+        ROS_INFO_STREAM("gradT (ana) = "<<dr.gradSafetyOrientation);
+        ROS_INFO_STREAM("gradT (cal) = "<<gradTCalc);
+
+
+    }
+
+        while (ros::ok())
+    {
+        ros::spinOnce();
+        VectorFieldResult vfr = vectorField(getPosition(), path, 1.5, 1000);
+        if (Global::generalCounter % 10 == 0)
+        {
+            ROS_INFO_STREAM("----------------");
+            ROS_INFO_STREAM("v = " << printVector(vfr.vector.normalized()));
+            ROS_INFO_STREAM("D = " << vfr.distance);
+        }
+
+        VectorXd v = VectorXd::Zero(2);
+        v << 0.3, 0;
+        setVelocity(0.2 * vfr.vector);
+        // publishVelocity(v);
+
+        Global::generalCounter++;
+
+        rate.sleep();
+    }
+
+    void computeVelocity(VectorXd pointTarget)
+{
+    vector<VectorXd> lidarPoints = getLidarPoints(getRobotPose().position);
+    DistanceResult dr = computeDist(lidarPoints, getRobotPose(), Global::param);
+
+    Global::currentLidarPoints = lidarPoints;
+
+    VectorXd vd3d = -0.2 * (getRobotPose().position - pointTarget);
+    VectorXd vd = VectorXd::Zero(2);
+    vd << vd3d[0], vd3d[1];
+
+    Global::distance = dr.distance;
+    Global::safety = dr.safety;
+    Global::gradSafetyPosition = dr.gradSafetyPosition;
+    Global::gradSafetyOrientation = dr.gradSafetyOrientation;
+    Global::witnessDistance = dr.witnessDistance;
+
+    double theta = getRobotPose().orientation;
+    double ctheta = cos(theta);
+    double stheta = sin(theta);
+    Vector2d dir;
+    dir << ctheta, stheta;
+    VectorXd normVelocity = vd.normalized();
+    double wd = 3 * Global::param.gainRobotYaw * (dir[0] * normVelocity[1] - dir[1] * normVelocity[0]);
+
+    VectorXd ud = vectorVertStack(vd, wd);
+
+    MatrixXd H = 2 * MatrixXd::Identity(3, 3);
+    VectorXd f = -2 * ud;
+    MatrixXd A = vectorVertStack(dr.gradSafetyPosition, dr.gradSafetyOrientation).transpose();
+    VectorXd b = VectorXd::Zero(1);
+
+    double bm;
+    if (dr.safety > 0)
+        bm = -0.5 * (dr.safety);
+    else
+        bm = -4 * (dr.safety);
+
+    b << bm;
+
+    VectorXd u = solveQP(H, f, A, b);
+    VectorXd v = VectorXd::Zero(3);
+    v << u[0], u[1], 0;
+
+    setTwist(v, u[2]);
+
+    Global::continueAlgorithm = pow((getRobotPose().position - pointTarget).norm(), 2) >= 0.7 * 0.7 + 0.8 * 0.8;
+
+    ROS_INFO_STREAM("-----------------------");
+
+    ROS_INFO_STREAM("distance = " << dr.distance);
+    ROS_INFO_STREAM("safety = " << dr.safety);
+    ROS_INFO_STREAM("goaldist = " << printVector(getRobotPose().position - pointTarget));
+    ROS_INFO_STREAM("gradSafetyP = " << printVector(dr.gradSafetyPosition));
+    ROS_INFO_STREAM("gradSafetyT = " << dr.gradSafetyOrientation);
+    ROS_INFO_STREAM("linVelocity = " << printVector(v));
+    ROS_INFO_STREAM("angVelocity = " << u[2]);
+}
