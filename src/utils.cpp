@@ -511,4 +511,13 @@ namespace CBFCirc
         vector << x, y, z;
         return vector;
     }
+
+    vector<VectorXd> deepCopy(vector<VectorXd> vec)
+    {
+        vector<VectorXd> copy;
+        for(int i=0; i < vec.size(); i++)
+            copy.push_back(vec[i]);
+
+        return copy;
+    }
 }

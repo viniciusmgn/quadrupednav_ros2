@@ -21,6 +21,19 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(cbf_circ_interfaces REQUIRED)
+find_package(octomap_ros REQUIRED)
+find_package(octomap_msgs REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(cbf_circ_interfaces REQUIRED)
+find_package(OpenCV REQUIRED)
+
+include_directories(
+  include
+  ${OpenCV_INCLUDE_DIRS}
+)
 
 find_package(Boost REQUIRED COMPONENTS 
   filesystem 
@@ -32,7 +45,7 @@ find_package(Boost REQUIRED COMPONENTS
 # find_package(<dependency> REQUIRED)
 
 add_executable(controller src/controller.cpp)
-ament_target_dependencies(controller rclcpp std_msgs geometry_msgs tf2_ros)
+ament_target_dependencies(controller rclcpp std_msgs geometry_msgs tf2_ros cbf_circ_interfaces octomap_ros cv_bridge cbf_circ_interfaces image_transport)
 target_include_directories(controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -42,6 +55,9 @@ target_link_libraries(controller
 
 install(TARGETS controller
   DESTINATION lib/${PROJECT_NAME})
+  
+  install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
 
 
 if(BUILD_TESTING)

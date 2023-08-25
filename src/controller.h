@@ -27,14 +27,23 @@
 #include "geometry_msgs/msg/twist.h"
 #include <geometry_msgs/msg/detail/twist__struct.hpp>
 
+#include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
+#include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
+
+#include <cv_bridge/cv_bridge.h>
+#include <octomap/OcTree.h>
+#include <octomap_msgs/conversions.h>
+#include <image_transport/image_transport.hpp>
+#include <octomap_msgs/msg/octomap.hpp>
+#include <opencv2/imgproc.hpp>
+#include <random>
+
 #include "utils.h"
 #include "utils.cpp"
 #include "plannerfunctions.h"
 #include "plannerfunctions.cpp"
 #include "graph.h"
 #include "graph.cpp"
-
-
 
 using namespace std;
 using namespace Eigen;
@@ -71,8 +80,6 @@ public:
     vector<RobotPose> commitedPath;
 };
 
-
-
 class Global
 {
 public:
@@ -101,6 +108,7 @@ public:
     inline static shared_timed_mutex mutexUpdateKDTree;
     inline static mutex mutexReplanCommitedPath;
     inline static mutex mutexUpdateGraph;
+    inline static shared_timed_mutex mutexGetLidarPoints;
     inline static vector<DataForDebug> dataForDebug = {};
     inline static Parameters param;
     inline static vector<GraphEdge *> currentPath = {};
@@ -114,6 +122,19 @@ public:
     inline static std::thread updateGraphThread;
     inline static std::thread updateKDTreeThread;
     inline static std::thread transitionAlgThread;
+};
+
+struct Contour
+{
+    std::vector<cv::Point> external;              // Points at the outermost boundary
+    std::vector<std::vector<cv::Point>> internal; // Points at the boundary of holes
+    bool valid;
+};
+
+struct FindFrontierPointResult
+{
+    vector<int> cluster_id;
+    vector<geometry_msgs::msg::Point> frontiers;
 };
 
 class CBFNavQuad : public rclcpp::Node
@@ -135,8 +156,8 @@ public:
     RobotPose getRobotPose();
     void setTwist(VectorXd linearVelocity, double angularVelocity);
     void setLinearVelocity(VectorXd linearVelocity);
-    static vector<vector<VectorXd>> getFrontierPoints();
-    static vector<VectorXd> getLidarPointsSource(VectorXd position, double radius);
+    vector<vector<VectorXd>> getFrontierPoints();
+    vector<VectorXd> getLidarPointsSource(VectorXd position, double radius);
     static vector<VectorXd> getLidarPointsKDTree(VectorXd position, double radius);
     void lowLevelMovement();
     void replanCommitedPathCall();
@@ -147,11 +168,30 @@ public:
     void updateKDTree();
     void transitionAlg();
 
+    // OCTOTREE
+    Contour ExtractContour(const cv::Mat &free, const cv::Point &origin);
+    void OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg);
+    double MilliSecondsSinceTime(const rclcpp::Time &start);
+    void VisualizeFrontierCall(const cv::Mat &free_map, const cv::Mat &occupied_map,
+                               const std::shared_ptr<cbf_circ_interfaces::srv::FindFrontierPoints::Response> frontier);
+    FindFrontierPointResult FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin);
 
+    // DEBUG
     void debug_addMessage(int counter, string msg);
     void debug_Store(int counter);
     void debug_generateManyPathsReport(int counter);
-    
+
+private:
+    // Storage and mutex lock for the latest map received
+    std::unique_ptr<octomap::OcTree> octomap_ptr;
+    std::mutex octomap_lock;
+
+    // Image transport for debug
+    rclcpp::Node::SharedPtr node_handle_;
+    image_transport::ImageTransport image_transport_;
+    image_transport::Publisher debug_visualizer; // Debug visualization
+
+    // Subscribers & services
+    rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octomap_subscriber_;
+
 };
-
-

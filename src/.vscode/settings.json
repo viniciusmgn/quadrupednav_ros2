@@ -80,7 +80,9 @@
         "variant": "cpp",
         "bit": "cpp",
         "dense": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "any": "cpp",
+        "regex": "cpp"
     }
 
 }

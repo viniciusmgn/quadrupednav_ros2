@@ -24,13 +24,21 @@
 #include <boost/multi_array.hpp>
 #include <typeinfo>
 #include <boost/filesystem.hpp>
-// #include <octomap_with_query/neighbor_points.h>
-// #include <octomap_with_query/frontier_points.h>
+#include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
+#include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
 
 #include "./kdtree-cpp-master/kdtree.hpp"
 #include "./kdtree-cpp-master/kdtree.cpp"
 #include <thread>
 #include <mutex>
+
+#include <cv_bridge/cv_bridge.h>
+#include <octomap/OcTree.h>
+#include <octomap_msgs/conversions.h>
+#include <image_transport/image_transport.hpp>
+#include <octomap_msgs/msg/octomap.hpp>
+#include <opencv2/imgproc.hpp>
+#include <random>
 
 #include "utils.h"
 #include "utils.cpp"
@@ -44,20 +52,30 @@ using namespace CBFCirc;
 using std::placeholders::_1;
 
 CBFNavQuad::CBFNavQuad()
-    : Node("cbfnavquad")
+    : Node("cbfnavquad"),
+      node_handle_(std::shared_ptr<CBFNavQuad>(this, [](auto *) {})),
+      image_transport_(node_handle_)
 {
     // Initialize ROS variables
 
-    pubBodyTwist = this->create_publisher<geometry_msgs::msg::Twist>("b1_gazebo/cmd_vel", 10);
+    pubBodyTwist = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
     pubEnd = this->create_publisher<std_msgs::msg::Int16>("endProgram", 10);
     subEnd = this->create_subscription<std_msgs::msg::Int16>(
         "endProgram", 10, std::bind(&CBFNavQuad::endCallback, this, _1));
 
+    // Image transport
+    debug_visualizer = image_transport_.advertise("frontier_debug", 1);
+
+    // Octomap subscriber
+    octomap_subscriber_ = this->create_subscription<octomap_msgs::msg::Octomap>(
+        "octomap_binary", 1,
+        std::bind(&CBFNavQuad::OctomapCallback, this, std::placeholders::_1));
+
     tfBuffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
 
-    poseCallbackTimer = this->create_wall_timer(100ms, std::bind(&CBFNavQuad::updatePose, this));
-    mainLoopTimer = this->create_wall_timer(100ms, std::bind(&CBFNavQuad::mainFunction, this));
+    poseCallbackTimer = this->create_wall_timer(10ms, std::bind(&CBFNavQuad::updatePose, this));
+    mainLoopTimer = this->create_wall_timer(10ms, std::bind(&CBFNavQuad::mainFunction, this));
 
     // Initialize some global variables
     Global::startTime = now().seconds();
@@ -87,7 +105,7 @@ void CBFNavQuad::updatePose()
     try
     {
         geometry_msgs::msg::TransformStamped t;
-        t = tfBuffer->lookupTransform("b1_gazebo/fast_lio", "b1_gazebo/base", tf2::TimePointZero);
+        t = tfBuffer->lookupTransform("B1_154/odom_fast_lio", "B1_154/imu_link", tf2::TimePointZero);
 
         double px = t.transform.translation.x;
         double py = t.transform.translation.y;
@@ -106,6 +124,10 @@ void CBFNavQuad::updatePose()
         Global::position << px, py, pz;
         Global::orientation = 2 * atan2(sinhalfv, coshalfv);
         Global::measuredHeight = t.transform.translation.z;
+
+        if(!Global::measured)
+            Global::param.constantHeight = Global::measuredHeight;
+
         Global::measured = true;
     }
     catch (const tf2::TransformException &ex)
@@ -120,7 +142,6 @@ void CBFNavQuad::mainFunction()
     {
         if (Global::measured)
         {
-
             if (Global::generalCounter % Global::param.freqDisplayMessage == 0 && (Global::planningState != MotionPlanningState::planning))
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
@@ -205,34 +226,113 @@ void CBFNavQuad::setLinearVelocity(VectorXd linearVelocity)
 vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
 {
     vector<vector<VectorXd>> frontierPoints;
-    // octomap_with_query::frontier_points srv;
 
-    // srv.request.z_min = Global::param.constantHeight - 0.2;
-    // srv.request.z_max = Global::param.constantHeight + 0.2;
+    // Cannot proceed without a map
+    if (octomap_ptr == nullptr)
+    {
+        RCLCPP_WARN(this->get_logger(), "Map is not initialized");
+        return frontierPoints;
+    }
 
-    // if (Global::frontierClient->call(srv))
-    // {
-    //     int idMax = 0;
-    //     int idMin = 1000;
-    //     for (int i = 0; i < srv.response.cluster_id.size(); i++)
-    //     {
-    //         idMax = srv.response.cluster_id[i] > idMax ? srv.response.cluster_id[i] : idMax;
-    //         idMin = srv.response.cluster_id[i] < idMin ? srv.response.cluster_id[i] : idMin;
-    //     }
+    double rz_min = Global::param.constantHeight - 0.2;
+    double rz_max = Global::param.constantHeight + 0.2;
 
-    //     for (int i = 0; i <= idMax - idMin; i++)
-    //     {
-    //         vector<VectorXd> points = {};
-    //         frontierPoints.push_back(points);
-    //     }
+    // Pixelize, with 2px buffer for boundary points
+    double x_max, y_max, z_max, x_min, y_min, z_min;
+    octomap_ptr->getMetricMax(x_max, y_max, z_max);
+    octomap_ptr->getMetricMin(x_min, y_min, z_min);
 
-    //     for (int i = 0; i < srv.response.frontiers.size(); i++)
-    //     {
-    //         VectorXd newPoint = VectorXd::Zero(3);
-    //         newPoint << srv.response.frontiers[i].x, srv.response.frontiers[i].y, Global::param.constantHeight;
-    //         frontierPoints[srv.response.cluster_id[i] - idMin].push_back(newPoint);
-    //     }
-    // }
+    const double map_resolution = octomap_ptr->getResolution(), buffer_factor = 2.0;
+
+    x_max += map_resolution * buffer_factor;
+    y_max += map_resolution * buffer_factor;
+    x_min -= map_resolution * buffer_factor;
+    y_min -= map_resolution * buffer_factor;
+
+    const size_t image_width =
+                     static_cast<size_t>(std::ceil((x_max - x_min) / map_resolution)),
+                 image_height =
+                     static_cast<size_t>(std::ceil((y_max - y_min) / map_resolution));
+
+    const size_t map_origin_x = static_cast<size_t>(std::ceil(-x_min / map_resolution)),
+                 map_origin_y = static_cast<size_t>(std::ceil(-y_min / map_resolution));
+    const cv::Point map_origin(map_origin_x, map_origin_y);
+
+    octomap::point3d max_bounds(x_max, y_max, rz_max),
+        min_bounds(x_min, y_min, rz_min);
+    cv::Mat occupied_map(image_height, image_width, CV_8UC1, cv::Scalar(0)),
+        free_map(image_height, image_width, CV_8UC1, cv::Scalar(0));
+
+    // Mutex access to the tree
+    {
+        std::unique_lock<std::mutex> lock(octomap_lock);
+        rclcpp::Time section = this->now();
+        for (octomap::OcTree::leaf_bbx_iterator
+                 it = octomap_ptr->begin_leafs_bbx(min_bounds, max_bounds),
+                 end = octomap_ptr->end_leafs_bbx();
+             it != end; ++it)
+        {
+            size_t x_coord =
+                       static_cast<size_t>(std::ceil((it.getX() - x_min) / map_resolution)),
+                   y_coord =
+                       static_cast<size_t>(std::ceil((it.getY() - y_min) / map_resolution));
+
+            // If logOdd > 0 -> Occupied. Otherwise free
+            // Checks for overlapping free / occupied is not essential
+            if (it->getLogOdds() > 0)
+            {
+                occupied_map.at<uint8_t>(y_coord, x_coord) = 255;
+                free_map.at<uint8_t>(y_coord, x_coord) = 0;
+            }
+            else
+            {
+                if (occupied_map.at<uint8_t>(y_coord, x_coord) == 0)
+                    free_map.at<uint8_t>(y_coord, x_coord) = 255;
+            }
+        }
+    }
+
+    FindFrontierPointResult ffpr;
+    // Frontier point extraction
+    {
+        // rclcpp::Time section = this->now();
+        ffpr = FindFrontierPoints(free_map, occupied_map, map_origin);
+        // RCLCPP_DEBUG_STREAM(this->get_logger(), "Frontier idenfitication completed in "
+        //                                             << MilliSecondsSinceTime(section)
+        //                                             << " ms");
+    }
+
+    // DEBUG Visualize before post-processing
+    // VisualizeFrontierCall(free_map, occupied_map, response);
+
+    // Post-processing to convert points into real coordinates
+    for (size_t i = 0; i < ffpr.frontiers.size(); ++i)
+    {
+        ffpr.frontiers[i].x = ffpr.frontiers[i].x * map_resolution + x_min;
+        ffpr.frontiers[i].y = ffpr.frontiers[i].y * map_resolution + y_min;
+    }
+
+    // Process the information
+    int idMax = 0;
+    int idMin = 1000;
+    for (int i = 0; i < ffpr.cluster_id.size(); i++)
+    {
+        idMax = ffpr.cluster_id[i] > idMax ? ffpr.cluster_id[i] : idMax;
+        idMin = ffpr.cluster_id[i] < idMin ? ffpr.cluster_id[i] : idMin;
+    }
+
+    for (int i = 0; i <= idMax - idMin; i++)
+    {
+        vector<VectorXd> points = {};
+        frontierPoints.push_back(points);
+    }
+
+    for (int i = 0; i < ffpr.frontiers.size(); i++)
+    {
+        VectorXd newPoint = VectorXd::Zero(3);
+        newPoint << ffpr.frontiers[i].x, ffpr.frontiers[i].y, Global::param.constantHeight;
+        frontierPoints[ffpr.cluster_id[i] - idMin].push_back(newPoint);
+    }
 
     // Filter frontier points
     vector<vector<VectorXd>> frontierPointsFiltered = {};
@@ -253,35 +353,48 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
             frontierPointsFiltered.push_back(frontierPoints[i]);
     }
     Global::mutexUpdateKDTree.unlock_shared();
-
     return frontierPointsFiltered;
 }
 
 vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radius)
 {
-    vector<VectorXd> points;
 
-    // octomap_with_query::neighbor_points srv;
+    vector<VectorXd> points = {};
 
-    // srv.request.radius = radius;
-    // srv.request.query.x = position[0];
-    // srv.request.query.y = position[1];
-    // srv.request.query.z = position[2];
+    // Cannot proceed without a map
+    if (octomap_ptr == nullptr)
+    {
+        RCLCPP_WARN(this->get_logger(), "Map is not initialized");
+        return {};
+    }
 
-    // int fact = Global::param.sampleFactorLidarSource;
+    int fact = Global::param.sampleFactorLidarSource;
 
-    // if (Global::neighborhClient->call(srv))
-    // {
-    //     for (int i = 0; i < srv.response.neighbors.size() / fact; i++)
-    //     {
-    //         double z = srv.response.neighbors[fact * i].z;
-    //         if (z >= Global::measuredHeight - 0.10 && z <= Global::measuredHeight + 0.10)
-    //         {
-    //             VectorXd newPoint = vec3d(srv.response.neighbors[fact * i].x, srv.response.neighbors[fact * i].y, Global::param.constantHeight);
-    //             points.push_back(newPoint);
-    //         }
-    //     }
-    // }
+    // Set bounds of the map to be extracted
+    {
+        std::unique_lock<std::mutex> lock(octomap_lock);
+        octomap::point3d max_bounds(position[0] + radius, position[1] + radius, position[2] + radius),
+            min_bounds(position[0] - radius, position[1] - radius, position[2] - radius);
+
+        int k = 0;
+        for (octomap::OcTree::leaf_bbx_iterator
+                 it = octomap_ptr->begin_leafs_bbx(min_bounds, max_bounds),
+                 end = octomap_ptr->end_leafs_bbx();
+             it != end; ++it)
+        {
+
+            // If logOdd > 0 -> Occupied. Otherwise free
+            if ((k % fact == 0) && (it->getLogOdds() > 0))
+            {
+                double x = it.getX(), y = it.getY(), z = it.getZ();
+                if (z >= Global::measuredHeight - 0.10 && z <= Global::measuredHeight + 0.10)
+                    points.push_back(vec3d(x, y, Global::param.constantHeight));
+            }
+
+            if (it->getLogOdds() > 0)
+                k++;
+        }
+    }
 
     return points;
 }
@@ -321,13 +434,15 @@ void CBFNavQuad::lowLevelMovement()
         {
             if (Global::planningState != MotionPlanningState::planning && Global::commitedPath.size() > 1)
             {
-                vector<VectorXd> obsPoints = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
+                vector<VectorXd> pointsLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
+
                 VectorFieldResult vfr = vectorField(getRobotPose(), Global::commitedPath, Global::param);
                 CBFControllerResult cccr = CBFController(getRobotPose(), vfr.linearVelocity, vfr.angularVelocity,
-                                                         obsPoints, Global::param);
+                                                         pointsLidar, Global::param);
 
                 // Send the twist
-                setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
+                setTwist(0.7 * cccr.linearVelocity, 0.7 * cccr.angularVelocity);
+                // setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
 
                 // Refresh some variables
                 Global::distance = cccr.distanceResult.distance;
@@ -632,6 +747,173 @@ void CBFNavQuad::transitionAlg()
             }
         }
     }
+}
+
+// OCTOMAP
+
+// Algorithm to extract the contours (inner & outer) of a given region
+Contour CBFNavQuad::ExtractContour(const cv::Mat &free, const cv::Point &origin)
+{
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(free, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_NONE);
+
+    // Select the contour containing the origin
+    Contour relevant_contour;
+    relevant_contour.valid = false;
+
+    for (size_t i = 0; i < contours.size(); ++i)
+    {
+        bool origin_in_hole = false;
+
+        const std::vector<cv::Point> &contour = contours[i];
+
+        // Check if the origin is inside the outermost boundaries
+        if (cv::pointPolygonTest(contour, origin, false) > 0)
+        {
+            // Check if the origin is not inside the holes (children) of the contour
+            std::vector<std::vector<cv::Point>> children_contours;
+            for (size_t j = 0; j < contours.size(); ++j)
+                if (hierarchy[j][3] == static_cast<int>(i)) // Parent is the current contour
+                    children_contours.push_back(contours[j]);
+
+            for (const std::vector<cv::Point> &child_contour : children_contours)
+            {
+                // If the origin is inside a hole, then this is the incorrect contour
+                if (cv::pointPolygonTest(child_contour, origin, false) > 0)
+                    origin_in_hole = true;
+                break;
+            }
+
+            // If the origin is not in any of the holes, then the current contour is
+            // accurate
+            if (!origin_in_hole)
+            {
+                relevant_contour.external = contour;
+                relevant_contour.internal = children_contours;
+                relevant_contour.valid = true;
+            }
+        }
+    }
+
+    if (!relevant_contour.valid)
+    {
+        RCLCPP_ERROR(this->get_logger(), "Contour cannot be set properly. Investigate");
+    }
+
+    return relevant_contour;
+}
+
+double CBFNavQuad::MilliSecondsSinceTime(const rclcpp::Time &start)
+{
+    return (this->now() - start).nanoseconds() * 1e-6;
+}
+
+void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg)
+{
+    // Reinitialize tree
+    {
+        std::unique_lock<std::mutex> lock(octomap_lock);
+        // const double kResolution = msg.resolution;
+        octomap_ptr.reset(
+            dynamic_cast<octomap::OcTree *>(octomap_msgs::binaryMsgToMap(*msg)));
+        octomap_ptr->expand();
+    }
+}
+
+void CBFNavQuad::VisualizeFrontierCall(
+    const cv::Mat &free_map,
+    const cv::Mat &occupied_map,
+    const std::shared_ptr<cbf_circ_interfaces::srv::FindFrontierPoints::Response>
+        frontier)
+{
+    cv::Mat visual;
+    cv::Mat zero_image(free_map.rows, free_map.cols, CV_8UC1, cv::Scalar(0));
+    std::vector<cv::Mat> channels{zero_image, free_map, occupied_map};
+    cv::merge(channels, visual);
+
+    // Add different color for each cluster
+    static std::random_device dev;
+    static std::mt19937 rng(dev());
+    static std::uniform_int_distribution<std::mt19937::result_type> sample_255(0, 255);
+    cv::Scalar cluster_color(255, 0, 255);
+    size_t previous_cluster_id = 0;
+
+    for (size_t i = 0; i < frontier->frontiers.size(); ++i)
+    {
+        // Resample color for a new cluster
+        if (previous_cluster_id != frontier->cluster_id[i])
+        {
+            cluster_color = cv::Scalar(sample_255(rng), sample_255(rng), sample_255(rng));
+        }
+
+        cv::Point pt(frontier->frontiers[i].x, frontier->frontiers[i].y);
+        cv::circle(visual, pt, 0, cluster_color, 1);
+
+        previous_cluster_id = frontier->cluster_id[i];
+    }
+
+    // Correct the direction for better visualization
+    cv::flip(visual, visual, 0);
+    sensor_msgs::msg::Image::SharedPtr visMsg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", visual).toImageMsg();
+    debug_visualizer.publish(visMsg);
+}
+
+FindFrontierPointResult CBFNavQuad::FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin)
+{
+    FindFrontierPointResult ffpr;
+    Contour contour = ExtractContour(free_map, map_origin);
+
+    // All external and internal points are at the boundary & are therefore valid
+    // frontiers. Flatten the found contour
+    std::vector<cv::Point> boundary_points;
+    boundary_points.insert(boundary_points.end(), contour.external.begin(),
+                           contour.external.end());
+    for (const std::vector<cv::Point> &internal_contour : contour.internal)
+        boundary_points.insert(boundary_points.end(), internal_contour.begin(),
+                               internal_contour.end());
+
+    if (boundary_points.size() == 0)
+    {
+        RCLCPP_WARN(this->get_logger(), "No frontier points found");
+        return ffpr;
+    }
+
+    // Frontier points are the contours of free  space that are not adjacent to an
+    // occupied location. Dilate the occupied cells with 3x3 kernel to extend the region
+    // by 1 pixel. Alternative to querying 8-neighborhood for every contour
+    cv::Mat kernel =
+        cv::getStructuringElement(cv::MorphShapes::MORPH_RECT, cv::Size(3, 3));
+    cv::Mat occupied_contour;
+    cv::dilate(occupied_map, occupied_contour, kernel);
+
+    // Discontinuity indicates a cluster change for frontiers. Identified by a max.
+    // coordinate distance of greater than 1
+    cv::Point previous_pt = boundary_points[0];
+    size_t cluster_id = 0;
+    for (const auto &pt : boundary_points)
+    {
+        if (occupied_contour.at<uchar>(pt) != 255)
+        {
+            geometry_msgs::msg::Point coordinate;
+            coordinate.x = pt.x;
+            coordinate.y = pt.y;
+            ffpr.frontiers.push_back(coordinate);
+
+            // Increment cluster id if the frontier point is discontinuous
+            // FIXME: If the cluster begins in the middle of a frontier line, the cluster
+            // will be treated as two different clusters. Can be post-processed
+            size_t distance =
+                std::max(std::abs(previous_pt.x - pt.x), std::abs(previous_pt.y - pt.y));
+            if (distance > 1)
+                ++cluster_id;
+
+            ffpr.cluster_id.push_back(cluster_id);
+            previous_pt = pt;
+        }
+    }
+    return ffpr;
 }
 
 // DEBUG
@@ -1190,7 +1472,13 @@ int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<CBFNavQuad>());
-    rclcpp::shutdown();
+    
+
+    cout << "Started printing data"<< std::endl;
+
+    ofstream file;
+    debug_printAlgStateToMatlab(&file);
+    cout << "Debug data printed!"<< std::endl;
 
     Global::lowLevelMovementThread.join();
     cout << "lowLevelMovementThread joined" << std::endl;
@@ -1203,7 +1491,7 @@ int main(int argc, char *argv[])
     Global::transitionAlgThread.join();
     cout << "transitionAlgThread joined" << std::endl;
 
-    ofstream file;
-    debug_printAlgStateToMatlab(&file);
+    rclcpp::shutdown();
+
     return 0;
 }

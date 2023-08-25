@@ -21,7 +21,7 @@ namespace CBFCirc
         double boundingHeight = 1.45;
         double smoothingParam = 0.5; // 0.1 0.3
 
-        double constantHeight = -0.08; // 0.8 -0.1725
+        double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
         double sensingRadius = 5.0;      // 3.0 5.0
 
@@ -56,7 +56,7 @@ namespace CBFCirc
         double minDistFilterKDTree = 0.15; // 0.3
 
         int sampleFactorStorePath = 15;
-        int sampleFactorLidarSource = 5;
+        int sampleFactorLidarSource = 15; //5
 
 
         int noMaxOptimizePath = 10;
