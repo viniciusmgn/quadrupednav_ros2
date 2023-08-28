@@ -21,11 +21,10 @@
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
-#include "std_msgs/msg/int16.hpp"
-#include "geometry_msgs/msg/twist.h"
-#include <geometry_msgs/msg/detail/twist__struct.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int16.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 
 #include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
 #include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"

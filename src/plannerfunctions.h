@@ -75,7 +75,7 @@ namespace CBFCirc
         int noTriesClosestPoint = 5;
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
-        VectorXd globalTargetPosition = vec3d(-4.25, 5.65, -0.1725);
+        VectorXd globalTargetPosition = vec3d(5.0, 0.0, 0.0);
 
         double distanceMarginLowLevel = 0.15; // 0.20
     };
