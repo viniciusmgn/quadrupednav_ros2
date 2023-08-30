@@ -484,19 +484,24 @@ void CBFNavQuad::replanCommitedPathCall()
     updateKDTreeCall();
     Global::mutexUpdateKDTree.lock_shared();
 
-    Global::generateManyPathResult = CBFCircPlanMany(getRobotPose(), Global::currentGoalPosition, getLidarPointsKDTree,
+    // DEBUG
+    int counter = Global::generalCounter;
+    debug_addMessage(counter, "Store event: start replanning commited path");
+
+    GenerateManyPathsResult gmpr  = CBFCircPlanMany(getRobotPose(), Global::currentGoalPosition, getLidarPointsKDTree,
                                                      Global::param.maxTimePlanner, Global::param.plannerOmegaPlanReachError,
                                                      Global::param.deltaTimePlanner, Global::param);
 
-    if (Global::generateManyPathResult.atLeastOnePathReached)
-        Global::commitedPath = optimizePath(Global::generateManyPathResult.bestPath.path, getLidarPointsKDTree, Global::param);
+    if (gmpr.atLeastOnePathReached)
+        Global::commitedPath = optimizePath(gmpr.bestPath.path, getLidarPointsKDTree, Global::param);
+
+    Global::generateManyPathResult = gmpr;
 
     // DEBUG
-    int counter = Global::generalCounter;
+    counter = Global::generalCounter;
     debug_addMessage(counter, "Store event: replanning commited path");
     debug_generateManyPathsReport(counter);
     debug_Store(counter);
-    // DEBUG
 
     if (Global::generateManyPathResult.atLeastOnePathReached)
     {

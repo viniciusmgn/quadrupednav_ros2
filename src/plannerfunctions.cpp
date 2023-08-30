@@ -165,6 +165,10 @@ namespace CBFCirc
         while (cont)
         {
             CBFCircControllerResult cccr = CBFCircController(pose, targetPosition, querier(pose.position, param.sensingRadius), omega, param);
+
+            if (cccr.distanceResult.distance < -0.1)
+                cccr.feasible = false;
+
             if (cccr.feasible)
             {
                 gpr.path.push_back(pose);
