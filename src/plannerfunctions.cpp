@@ -166,7 +166,7 @@ namespace CBFCirc
         {
             CBFCircControllerResult cccr = CBFCircController(pose, targetPosition, querier(pose.position, param.sensingRadius), omega, param);
 
-            if (cccr.distanceResult.distance < -0.1)
+            if (cccr.distanceResult.distance < -0.4)
                 cccr.feasible = false;
 
             if (cccr.feasible)

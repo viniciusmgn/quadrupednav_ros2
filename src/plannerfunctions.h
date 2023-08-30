@@ -35,7 +35,7 @@ namespace CBFCirc
         double distanceMarginPlan = 0.05; // 0.20
 
         double deltaTimePlanner = 0.2;   // 0.1
-        double maxTimePlanner = 120;     // 50 100
+        double maxTimePlanner = 150;     // 50 100
         double plannerReachError = 0.50; // 0.25
         double plannerOmegaPlanReachError = 0.30; // 0.25
         double acceptableRationPlanning = 2.0;
@@ -75,9 +75,9 @@ namespace CBFCirc
         int noTriesClosestPoint = 5;
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
-        VectorXd globalTargetPosition = vec3d(8.0, -8.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
 
-        double distanceMarginLowLevel = 0.1; // 0.20
+        double distanceMarginLowLevel = 0.15; // 0.20
     };
 
     struct DistanceResult

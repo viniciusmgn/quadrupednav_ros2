@@ -62,6 +62,7 @@ CBFNavQuad::CBFNavQuad()
     subEnd = this->create_subscription<std_msgs::msg::Int16>(
         "endProgram", 10, std::bind(&CBFNavQuad::endCallback, this, _1));
 
+    this->declare_parameter("frontier_height_range", 0.2);
     this->declare_parameter("main_loop_interval_ms", 10);
     this->declare_parameter("low_level_movement_loop_sleep_ms", 10);
     this->declare_parameter("replanning_loop_sleep_ms", 2500);
@@ -373,6 +374,7 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
 {
 
     vector<VectorXd> points = {};
+    double height_range = this->get_parameter("frontier_height_range").as_double();
 
     // Cannot proceed without a map
     if (octomap_ptr == nullptr)
@@ -400,7 +402,7 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
             if ((k % fact == 0) && (it->getLogOdds() > 0))
             {
                 double x = it.getX(), y = it.getY(), z = it.getZ();
-                if (z >= Global::measuredHeight - 0.10 && z <= Global::measuredHeight + 0.10)
+                if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
                     points.push_back(vec3d(x, y, Global::param.constantHeight));
             }
 
