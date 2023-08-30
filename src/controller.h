@@ -144,8 +144,7 @@ public:
     rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr subEnd;
     std::shared_ptr<tf2_ros::TransformListener> tfListener{nullptr};
     std::unique_ptr<tf2_ros::Buffer> tfBuffer;
-    rclcpp::TimerBase::SharedPtr poseCallbackTimer;
-    rclcpp::TimerBase::SharedPtr mainLoopTimer;
+    rclcpp::TimerBase::SharedPtr poseCallbackTimer,  mainLoopTimer, lowLevelTimer, replanningTimer, graphUpdateTimer, kdTreeTimer, transitionTimer;
 
     CBFNavQuad();
     void endCallback(const std_msgs::msg::Int16::SharedPtr msg);

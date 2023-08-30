@@ -17,7 +17,7 @@ namespace CBFCirc
 
     struct Parameters
     {
-        double boundingRadius = 0.35; // 0.3 0.35
+        double boundingRadius = 0.3; // 0.3 0.35
         double boundingHeight = 1.45;
         double smoothingParam = 0.5; // 0.1 0.3
 
@@ -42,10 +42,10 @@ namespace CBFCirc
         double acceptableRatioChangeCirc = 0.7;
 
         int freqStoreDebug = 15;
-        int freqReplanPath = 250; // 500
-        int freqUpdateGraph = 500;
-        int freqUpdateKDTree = 50; // 100
-        int freqDisplayMessage = 50;
+        int freqReplanPath = 1; // 500
+        int freqUpdateGraph = 1;
+        int freqUpdateKDTree = 1; // 100
+        int freqDisplayMessage = 10;
 
         double noMaxIterationsCorrectPoint = 40;
         double stepCorrectPoint = 0.1;
@@ -75,9 +75,9 @@ namespace CBFCirc
         int noTriesClosestPoint = 5;
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
-        VectorXd globalTargetPosition = vec3d(5.0, 0.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(8.0, -8.0, 0.0);
 
-        double distanceMarginLowLevel = 0.15; // 0.20
+        double distanceMarginLowLevel = 0.1; // 0.20
     };
 
     struct DistanceResult
