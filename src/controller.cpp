@@ -51,6 +51,9 @@ using namespace Eigen;
 using namespace CBFCirc;
 using std::placeholders::_1;
 
+// std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
+std::string debugging_folder = "/ros_ws/cbf_debugging";
+
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
       node_handle_(std::shared_ptr<CBFNavQuad>(this, [](auto *) {})),
@@ -1086,7 +1089,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
 
     // Update the file loader
 
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/fileloader.m", ofstream::trunc);
+    f->open(debugging_folder + "/fileloader.m", ofstream::trunc);
 
     // Write to load the files
     *f << "clc;" << std::endl;
@@ -1138,9 +1141,9 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // Write to the parameters to a separate file
-    boost::filesystem::create_directories("/home/vinicius/Desktop/matlab/unitree_planning/" + fname);
+    boost::filesystem::create_directories(debugging_folder + "/" + fname);
 
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/parameters.m", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/parameters.m", ofstream::trunc);
     *f << "param_boundingRadius =" << Global::param.boundingRadius << ";" << std::endl;
     *f << "param_boundingHeight =" << Global::param.boundingHeight << ";" << std::endl;
     *f << "param_smoothingParam =" << Global::param.smoothingParam << ";" << std::endl;
@@ -1153,7 +1156,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     vector<vector<VectorXd>> tempVectorVector;
 
     // WRITE: timeStamp
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/timeStamp.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/timeStamp.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back(Global::dataForDebug[i].timeStamp);
@@ -1163,7 +1166,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: generalCounter
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/generalCounter.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/generalCounter.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].generalCounter);
@@ -1173,7 +1176,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: position
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/position.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/position.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].position);
@@ -1183,7 +1186,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: orientation
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/orientation.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/orientation.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].orientation);
@@ -1193,7 +1196,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: desired linear velocity
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/desLinVelocity.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/desLinVelocity.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].desLinVelocity);
@@ -1203,7 +1206,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: desired angular velocity
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/desAngVelocity.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/desAngVelocity.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].desAngVelocity);
@@ -1213,7 +1216,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: distance
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/distance.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/distance.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].distance);
@@ -1223,7 +1226,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: safety
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/safety.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/safety.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].safety);
@@ -1233,7 +1236,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: gradient of safety on position
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/gradSafetyPosition.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/gradSafetyPosition.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].gradSafetyPosition);
@@ -1243,7 +1246,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: gradient of safety on orientation
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/gradSafetyOrientation.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/gradSafetyOrientation.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].gradSafetyOrientation);
@@ -1253,7 +1256,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: witness points
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/witnessDistance.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/witnessDistance.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].witnessDistance);
@@ -1263,7 +1266,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current lidar points
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentLidarPoints.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentLidarPoints.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1278,7 +1281,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current lidar points from KD Tree
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentLidarPointsKDTree.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentLidarPointsKDTree.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1293,7 +1296,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current goal position
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentGoalPosition.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentGoalPosition.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].currentGoalPosition);
@@ -1303,7 +1306,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current matrix
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentOmega.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentOmega.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)getMatrixNumber(Global::dataForDebug[i].currentOmega));
@@ -1313,7 +1316,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current state of the motion planning
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/planningState.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/planningState.csv", ofstream::trunc);
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].planningState);
@@ -1323,7 +1326,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: graph nodes
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/graphNodes.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/graphNodes.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1338,7 +1341,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: graph edges
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/graphEdges.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/graphEdges.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1359,7 +1362,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: points Kd tree
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/pointsKDTree.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/pointsKDTree.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1374,7 +1377,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: points frontier
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/pointsFrontier.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/pointsFrontier.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1390,7 +1393,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: path in the graph
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentPath.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentPath.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1409,7 +1412,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current index in the path
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/currentIndexPath.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/currentIndexPath.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1423,7 +1426,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->close();
 
     // WRITE: current exploration position
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/explorationPosition.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/explorationPosition.csv", ofstream::trunc);
     tempVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempVector.push_back(Global::dataForDebug[i].explorationPosition);
@@ -1436,7 +1439,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     double fat = 3 * Global::param.sampleFactorStorePath;
     // fat = 1;
 
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/commitedPos.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/commitedPos.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1450,7 +1453,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->flush();
     f->close();
 
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/commitedOri.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/commitedOri.csv", ofstream::trunc);
     tempVectorVector = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
     {
@@ -1473,7 +1476,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
 
     for (int k = 0; k < names.size(); k++)
     {
-        f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/plannedPos" + names[k] + ".csv", ofstream::trunc);
+        f->open(debugging_folder + "/" + fname + "/plannedPos" + names[k] + ".csv", ofstream::trunc);
         tempVectorVector = {};
         for (int i = 0; i < Global::dataForDebug.size(); i++)
         {
@@ -1487,7 +1490,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         f->flush();
         f->close();
 
-        f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/plannedOri" + names[k] + ".csv", ofstream::trunc);
+        f->open(debugging_folder + "/" + fname + "/plannedOri" + names[k] + ".csv", ofstream::trunc);
         tempVectorVector = {};
         for (int i = 0; i < Global::dataForDebug.size(); i++)
         {
@@ -1505,7 +1508,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         f->flush();
         f->close();
 
-        f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/plannedGradSafPos" + names[k] + ".csv", ofstream::trunc);
+        f->open(debugging_folder + "/" + fname + "/plannedGradSafPos" + names[k] + ".csv", ofstream::trunc);
         tempVectorVector = {};
         for (int i = 0; i < Global::dataForDebug.size(); i++)
         {
@@ -1519,7 +1522,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         f->flush();
         f->close();
 
-        f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/plannedGradSafOri" + names[k] + ".csv", ofstream::trunc);
+        f->open(debugging_folder + "/" + fname + "/plannedGradSafOri" + names[k] + ".csv", ofstream::trunc);
         tempVectorVector = {};
         for (int i = 0; i < Global::dataForDebug.size(); i++)
         {
@@ -1537,7 +1540,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         f->flush();
         f->close();
 
-        f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/plannedDistance" + names[k] + ".csv", ofstream::trunc);
+        f->open(debugging_folder + "/" + fname + "/plannedDistance" + names[k] + ".csv", ofstream::trunc);
         tempVectorVector = {};
         for (int i = 0; i < Global::dataForDebug.size(); i++)
         {
@@ -1557,8 +1560,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     }
 
     // WRITE: messages
-
-    f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/messages.csv", ofstream::trunc);
+    f->open(debugging_folder + "/" + fname + "/messages.csv", ofstream::trunc);
     for (int j = 0; j < Global::messages.size(); j++)
     {
         *f << Global::messages[j] << std::endl;
