@@ -10,9 +10,11 @@
 #include <memory>
 #include <numeric>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
 using namespace Eigen;
+using namespace std::chrono;
 
 #include "plannerfunctions.h"
 #include "utils.h"
@@ -165,6 +167,10 @@ namespace CBFCirc
         while (cont)
         {
             CBFCircControllerResult cccr = CBFCircController(pose, targetPosition, querier(pose.position, param.sensingRadius), omega, param);
+
+            if (cccr.distanceResult.distance < param.minAcceptableNegativeDist)
+                cccr.feasible = false;
+
             if (cccr.feasible)
             {
                 gpr.path.push_back(pose);
@@ -172,16 +178,15 @@ namespace CBFCirc
                 gpr.pathGradSafetyOrientation.push_back(cccr.distanceResult.gradSafetyOrientation);
                 gpr.pathDistance.push_back(cccr.distanceResult.distance);
 
-                if(cccr.distanceResult.distance>0.05)
+                if (cccr.distanceResult.distance > 0.05)
                     dt = deltaTime;
-                else 
+                else
                 {
-                    if(cccr.distanceResult.distance>0)
-                        dt = deltaTime/2;
+                    if (cccr.distanceResult.distance > 0)
+                        dt = deltaTime / 2;
                     else
-                        dt = deltaTime/4; 
-                }   
-
+                        dt = deltaTime / 4;
+                }
 
                 pose.position += cccr.linearVelocity * dt;
                 pose.orientation += cccr.angularVelocity * dt;
@@ -361,15 +366,18 @@ namespace CBFCirc
         return modifiedPath;
     }
 
-    vector<RobotPose> optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
+    OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
     {
 
         vector<RobotPose> path = {};
+        OptimizePathResult opr;
 
         // Reduze size
         int indexPath = -1;
         int currentIndex = originalPath.size() - 1;
         int i = 0;
+
+        auto start = high_resolution_clock::now();
 
         while (indexPath != originalPath.size() - 1 && i < param.noMaxOptimizePath)
         {
@@ -394,22 +402,36 @@ namespace CBFCirc
         for (int i = indexPath + 1; i < originalPath.size(); i++)
             optimizedPath.push_back(originalPath[i]);
 
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+        opr.simplifyTime = (double)  duration.count()/E106;
+
+        start = high_resolution_clock::now();    
+
         // Correct path
+        start = high_resolution_clock::now();
+
         optimizedPath = correctPath(optimizedPath, querier, param);
+
+        stop = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(stop - start);
+        opr.correctPathTime = (double)  duration.count()/E106;
 
         // Upsample:
         optimizedPath = upsample(optimizedPath, param.upsampleMinPos, param.upsampleMinOri);
 
         // Filter
+        start = high_resolution_clock::now();
+
         vector<RobotPose> finalPath = {};
 
         for (int i = 0; i < optimizedPath.size(); i++)
         {
             VectorXd pos = VectorXd::Zero(3);
             double ori = 0;
-            int lasti = optimizedPath.size()-1;
+            int lasti = optimizedPath.size() - 1;
             int jmin = i < param.filterWindow ? 0 : i - param.filterWindow;
-            int jmax = i > lasti-param.filterWindow? lasti: i+param.filterWindow;
+            int jmax = i > lasti - param.filterWindow ? lasti : i + param.filterWindow;
             double N = (double)(jmax - jmin) + 1;
             for (int j = jmin; j <= jmax; j++)
             {
@@ -425,7 +447,12 @@ namespace CBFCirc
             finalPath.push_back(pose);
         }
 
-        return finalPath;
+        stop = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(stop - start);
+        opr.filterTime = (double)  duration.count()/E106;
+
+        opr.path = finalPath;
+        return opr;
     }
 
     vector<RobotPose> upsample(vector<RobotPose> path, double minDistPos, double minDistOri)
@@ -510,7 +537,6 @@ namespace CBFCirc
 
         vfr.linearVelocity = vec3d(v[0], v[1], 0);
         vfr.angularVelocity = v[2];
-
 
         return vfr;
     }

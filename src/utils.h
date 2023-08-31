@@ -18,6 +18,7 @@ namespace CBFCirc
     const double VERYBIGNUMBER = 1000000;
     const double VERYSMALLNUMBER = 0.000001;
     const double PI = 3.14;
+    const double E106 = 1000000;
 
     struct DataWithTimeStamp
     {

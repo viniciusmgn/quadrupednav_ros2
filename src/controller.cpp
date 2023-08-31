@@ -1,16 +1,16 @@
 #pragma once
 
+#include <chrono>
 #include <fstream>
 #include <sstream>
 
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
-#include "std_msgs/msg/int16.hpp"
-#include "geometry_msgs/msg/twist.h"
-#include <geometry_msgs/msg/detail/twist__struct.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int16.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 
 #include <iostream>
 #include <eigen3/Eigen/Core>
@@ -57,11 +57,20 @@ CBFNavQuad::CBFNavQuad()
       image_transport_(node_handle_)
 {
     // Initialize ROS variables
-
     pubBodyTwist = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
     pubEnd = this->create_publisher<std_msgs::msg::Int16>("endProgram", 10);
     subEnd = this->create_subscription<std_msgs::msg::Int16>(
         "endProgram", 10, std::bind(&CBFNavQuad::endCallback, this, _1));
+
+    this->declare_parameter("frontier_height_range", 0.2);
+    this->declare_parameter("main_loop_interval_ms", 10);
+    this->declare_parameter("low_level_movement_loop_sleep_ms", 10);
+    this->declare_parameter("replanning_loop_sleep_ms", 1500);
+    this->declare_parameter("update_graph_loop_sleep_ms", 5000);
+    this->declare_parameter("update_kdtree_loop_sleep_ms", 50);
+    this->declare_parameter("transition_loop_sleep_ms", 10);
+    this->declare_parameter("target_x", 5.0);
+    this->declare_parameter("target_y", 0.0);
 
     // Image transport
     debug_visualizer = image_transport_.advertise("frontier_debug", 1);
@@ -125,7 +134,7 @@ void CBFNavQuad::updatePose()
         Global::orientation = 2 * atan2(sinhalfv, coshalfv);
         Global::measuredHeight = t.transform.translation.z;
 
-        if(!Global::measured)
+        if (!Global::measured)
             Global::param.constantHeight = Global::measuredHeight;
 
         Global::measured = true;
@@ -140,6 +149,11 @@ void CBFNavQuad::mainFunction()
 
     if (rclcpp::ok() && Global::continueAlgorithm)
     {
+        // Receive path
+        double target_x = this->get_parameter("target_x").as_double();
+        double target_y = this->get_parameter("target_y").as_double();
+        // CBFCirc::Parameters::globalTargetPosition = vec3d(target_x, target_y, 0.0);
+
         if (Global::measured)
         {
             if (Global::generalCounter % Global::param.freqDisplayMessage == 0 && (Global::planningState != MotionPlanningState::planning))
@@ -167,8 +181,8 @@ void CBFNavQuad::mainFunction()
                 debug_Store(Global::generalCounter);
 
             // DEBUG
-
             Global::generalCounter++;
+            RCLCPP_DEBUG_STREAM(this->get_logger(), "Step " << Global::generalCounter);
         }
         else
         {
@@ -360,6 +374,7 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
 {
 
     vector<VectorXd> points = {};
+    double height_range = this->get_parameter("frontier_height_range").as_double();
 
     // Cannot proceed without a map
     if (octomap_ptr == nullptr)
@@ -387,7 +402,7 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
             if ((k % fact == 0) && (it->getLogOdds() > 0))
             {
                 double x = it.getX(), y = it.getY(), z = it.getZ();
-                if (z >= Global::measuredHeight - 0.10 && z <= Global::measuredHeight + 0.10)
+                if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
                     points.push_back(vec3d(x, y, Global::param.constantHeight));
             }
 
@@ -432,6 +447,7 @@ void CBFNavQuad::lowLevelMovement()
     {
         if (Global::measured && Global::firstPlanCreated)
         {
+            RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call start");
             if (Global::planningState != MotionPlanningState::planning && Global::commitedPath.size() > 1)
             {
                 vector<VectorXd> pointsLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
@@ -441,7 +457,8 @@ void CBFNavQuad::lowLevelMovement()
                                                          pointsLidar, Global::param);
 
                 // Send the twist
-                setTwist(0.7 * cccr.linearVelocity, 0.7 * cccr.angularVelocity);
+                double multiplicative_factor = 1.0;
+                setTwist(multiplicative_factor * cccr.linearVelocity, multiplicative_factor * cccr.angularVelocity);
                 // setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
 
                 // Refresh some variables
@@ -455,29 +472,59 @@ void CBFNavQuad::lowLevelMovement()
             {
                 setTwist(VectorXd::Zero(3), 0);
             }
+            RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call end");
         }
+        int sleep_interval = this->get_parameter("low_level_movement_loop_sleep_ms").as_int();
+        this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
     }
 }
 
 void CBFNavQuad::replanCommitedPathCall()
 {
+
     Global::mutexReplanCommitedPath.lock();
     updateKDTreeCall();
     Global::mutexUpdateKDTree.lock_shared();
 
-    Global::generateManyPathResult = CBFCircPlanMany(getRobotPose(), Global::currentGoalPosition, getLidarPointsKDTree,
-                                                     Global::param.maxTimePlanner, Global::param.plannerOmegaPlanReachError,
-                                                     Global::param.deltaTimePlanner, Global::param);
-
-    if (Global::generateManyPathResult.atLeastOnePathReached)
-        Global::commitedPath = optimizePath(Global::generateManyPathResult.bestPath.path, getLidarPointsKDTree, Global::param);
-
     // DEBUG
     int counter = Global::generalCounter;
+    debug_addMessage(counter, "Store event: start replanning commited path");
+
+    auto start = high_resolution_clock::now();
+
+    GenerateManyPathsResult gmpr = CBFCircPlanMany(getRobotPose(), Global::currentGoalPosition, getLidarPointsKDTree,
+                                                   Global::param.maxTimePlanner, Global::param.plannerOmegaPlanReachError,
+                                                   Global::param.deltaTimePlanner, Global::param);
+
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    debug_addMessage(counter, "CBFCircPlanMany took "+std::to_string((double) duration.count()/E106)+" s");
+
+    start = high_resolution_clock::now();
+
+
+    if (gmpr.atLeastOnePathReached)
+    {
+        OptimizePathResult opr = optimizePath(gmpr.bestPath.path, getLidarPointsKDTree, Global::param);
+        Global::commitedPath = opr.path;
+
+        debug_addMessage(counter, "CorrectPathTime: "+std::to_string(opr.correctPathTime)+" s");
+        debug_addMessage(counter, "SimplifyTime: "+std::to_string(opr.simplifyTime)+" s");
+        debug_addMessage(counter, "FilterTime: "+std::to_string(opr.filterTime)+" s");
+    }
+        
+
+    Global::generateManyPathResult = gmpr;
+
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    debug_addMessage(counter, "optimizePath took "+std::to_string( (double) duration.count()/E106)+" ss");
+
+    // DEBUG
+    counter = Global::generalCounter;
     debug_addMessage(counter, "Store event: replanning commited path");
     debug_generateManyPathsReport(counter);
     debug_Store(counter);
-    // DEBUG
 
     if (Global::generateManyPathResult.atLeastOnePathReached)
     {
@@ -505,14 +552,14 @@ void CBFNavQuad::replanCommitedPathCall()
     else
     {
         // Transition condition
-        cout << "Failed to find path... plan to explore frontier!";
+        RCLCPP_INFO_STREAM(this->get_logger(), "Failed to find path... plan to explore frontier!");
         debug_addMessage(counter, "Failed to find path... plan to explore frontier!");
 
         Global::planningState = MotionPlanningState::planning;
         vector<vector<VectorXd>> frontierPoints = getFrontierPoints();
         while (frontierPoints.size() == 0)
         {
-            cout << "No frontier points found... trying again...";
+            RCLCPP_INFO_STREAM(this->get_logger(), "No frontier points found... trying again...");
             std::this_thread::sleep_for(std::chrono::seconds(5));
             frontierPoints = getFrontierPoints();
         }
@@ -520,7 +567,7 @@ void CBFNavQuad::replanCommitedPathCall()
         updateGraphCall();
         Global::mutexUpdateGraph.lock();
         NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(getRobotPose(), getLidarPointsKDTree,
-                                                                              frontierPoints, Global::param);
+                                                                              frontierPoints, Global::param, this->get_logger());
         Global::mutexUpdateGraph.unlock();
 
         if (nepr.success)
@@ -550,7 +597,7 @@ void CBFNavQuad::replanCommitedPathCall()
         else
         {
             // Algorithm failed
-            cout << "Algorithm for finding new exploration points failed! Algorithm halted!";
+            RCLCPP_INFO_STREAM(this->get_logger(),"Algorithm for finding new exploration points failed! Algorithm halted!");
             Global::planningState = MotionPlanningState::failure;
             Global::continueAlgorithm = false;
         }
@@ -562,8 +609,17 @@ void CBFNavQuad::replanCommitedPathCall()
 void CBFNavQuad::replanCommitedPath()
 {
     while (rclcpp::ok() && Global::continueAlgorithm)
+    {
+
         if (Global::measured && (Global::generalCounter % Global::param.freqReplanPath == 0))
+        {
+            RCLCPP_DEBUG(rclcpp::get_logger("replanning_logger"), "Replanning call start");
             replanCommitedPathCall();
+            RCLCPP_DEBUG(rclcpp::get_logger("replanning_logger"), "Replanning call end");
+        }
+        int sleep_interval = this->get_parameter("replanning_loop_sleep_ms").as_int();
+        this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
+    }
 }
 
 void CBFNavQuad::updateGraphCall()
@@ -630,14 +686,25 @@ void CBFNavQuad::updateGraphCall()
 void CBFNavQuad::updateGraph()
 {
     while (rclcpp::ok() && Global::continueAlgorithm)
+    {
         if (Global::measured && (Global::generalCounter % Global::param.freqUpdateGraph == 0))
+        {
+            RCLCPP_DEBUG(rclcpp::get_logger("graph_logger"), "Graph call start");
             updateGraphCall();
+            RCLCPP_DEBUG(rclcpp::get_logger("graph_logger"), "Graph call end");
+        }
+        int sleep_interval = this->get_parameter("update_graph_loop_sleep_ms").as_int();
+        this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
+    }
 }
 
 void CBFNavQuad::updateKDTreeCall()
 {
-
+    auto start = high_resolution_clock::now();
     Global::mutexUpdateKDTree.lock();
+
+    
+
 
     vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
 
@@ -677,22 +744,35 @@ void CBFNavQuad::updateKDTreeCall()
     Global::kdTree = new Kdtree::KdTree(&nodes, 2);
 
     Global::mutexUpdateKDTree.unlock();
-    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points");
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took "+std::to_string((double) duration.count()/E106)+" s.");
 }
 
 void CBFNavQuad::updateKDTree()
 {
     while (rclcpp::ok() && Global::continueAlgorithm)
+    {
+
         if (Global::measured && (Global::generalCounter % Global::param.freqUpdateKDTree == 0))
+        {
+            RCLCPP_DEBUG(rclcpp::get_logger("kdtree_logger"), "kdtree call start");
             updateKDTreeCall();
+            RCLCPP_DEBUG(rclcpp::get_logger("kdtree_logger"), "kdtree call end");
+        }
+        int sleep_interval = this->get_parameter("update_kdtree_loop_sleep_ms").as_int();
+        this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
+    }
 }
 
 void CBFNavQuad::transitionAlg()
 {
     while (rclcpp::ok() && Global::continueAlgorithm)
     {
+
         if (Global::measured)
         {
+            RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call start");
             bool pointReached = (getRobotPose().position - Global::currentGoalPosition).norm() <= Global::param.plannerReachError;
 
             if ((Global::planningState == MotionPlanningState::goingToGlobalGoal) && pointReached)
@@ -745,7 +825,10 @@ void CBFNavQuad::transitionAlg()
                     Global::currentOmega = Global::currentPath[Global::currentIndexPath]->omega;
                 }
             }
+            RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call end");
         }
+        int sleep_interval = this->get_parameter("transition_loop_sleep_ms").as_int();
+        this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
     }
 }
 
@@ -961,21 +1044,22 @@ void CBFNavQuad::debug_addMessage(int counter, string msg)
 void CBFNavQuad::debug_generateManyPathsReport(int counter)
 {
     debug_addMessage(counter, "Omega replanned!");
+    debug_addMessage(counter, "Goal: " + printVector(Global::currentGoalPosition));
+
     for (int k = 0; k < Global::generateManyPathResult.pathResults.size(); k++)
     {
         string pathName = getMatrixName(Global::generateManyPathResult.pathOmega[k]);
+        string errorToGoal = std::to_string(Global::generateManyPathResult.pathResults[k].finalError);
+        string minimumError = std::to_string(Global::param.plannerOmegaPlanReachError);
+
         if (Global::generateManyPathResult.pathResults[k].pathState == PathState::sucess)
-            debug_addMessage(counter, "Path " + pathName + " suceeded!");
+            debug_addMessage(counter, "Path " + pathName + " suceeded! Error to path was " + errorToGoal + " and minimum is " + minimumError);
 
         if (Global::generateManyPathResult.pathResults[k].pathState == PathState::unfeasible)
-            debug_addMessage(counter, "Path " + pathName + " unfeasible!");
+            debug_addMessage(counter, "Path " + pathName + " unfeasible!  Error to path was " + errorToGoal + " and minimum is " + minimumError);
 
         if (Global::generateManyPathResult.pathResults[k].pathState == PathState::timeout)
-        {
-            string errorToGoal = std::to_string(Global::generateManyPathResult.pathResults[k].finalError);
-            string minimumError = std::to_string(Global::param.plannerOmegaPlanReachError);
             debug_addMessage(counter, "Path " + pathName + " timeout! Error to path was " + errorToGoal + " but minimum is " + minimumError);
-        }
     }
 }
 
@@ -1472,13 +1556,14 @@ int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<CBFNavQuad>());
-    
 
-    cout << "Started printing data"<< std::endl;
+    cout << "Started printing data" << std::endl;
 
     ofstream file;
     debug_printAlgStateToMatlab(&file);
-    cout << "Debug data printed!"<< std::endl;
+    cout << "Debug data printed!" << std::endl;
+
+    sleep(20);
 
     Global::lowLevelMovementThread.join();
     cout << "lowLevelMovementThread joined" << std::endl;

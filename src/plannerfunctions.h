@@ -17,9 +17,9 @@ namespace CBFCirc
 
     struct Parameters
     {
-        double boundingRadius = 0.35; // 0.3 0.35
-        double boundingHeight = 1.45;
-        double smoothingParam = 0.5; // 0.1 0.3
+        double boundingRadius = 0.3; // 0.3 0.35
+        double boundingHeight = 1.35;
+        double smoothingParam = 0.3; // 0.1 0.3 0.5
 
         double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
@@ -35,17 +35,17 @@ namespace CBFCirc
         double distanceMarginPlan = 0.05; // 0.20
 
         double deltaTimePlanner = 0.2;   // 0.1
-        double maxTimePlanner = 120;     // 50 100
+        double maxTimePlanner = 150;     // 50 100
         double plannerReachError = 0.50; // 0.25
         double plannerOmegaPlanReachError = 0.30; // 0.25
         double acceptableRationPlanning = 2.0;
         double acceptableRatioChangeCirc = 0.7;
 
         int freqStoreDebug = 15;
-        int freqReplanPath = 250; // 500
-        int freqUpdateGraph = 500;
-        int freqUpdateKDTree = 50; // 100
-        int freqDisplayMessage = 50;
+        int freqReplanPath = 1; // 500
+        int freqUpdateGraph = 1;
+        int freqUpdateKDTree = 1; // 100
+        int freqDisplayMessage = 10;
 
         double noMaxIterationsCorrectPoint = 40;
         double stepCorrectPoint = 0.1;
@@ -58,24 +58,29 @@ namespace CBFCirc
         int sampleFactorStorePath = 15;
         int sampleFactorLidarSource = 15; //5
 
+        double minAcceptableNegativeDist = -0.35;
+
 
         int noMaxOptimizePath = 10;
         double upsampleMinPos = 0.01; //0.01
         double upsampleMinOri = 0.01; //0.01
         double vectorFieldAlpha = 2.0;
-        double correctPathStep = 0.15;
+        
         double distCutoffCorrect = 0.6;
         int generateSimplePathDiv = 100;
         double distPathFree = 0.05;
-        int noIterationsCorrectPath = 7;
+        int noIterationsCorrectPath = 3; //7
+        double correctPathStep = 0.3; //0.15
         int filterWindow = 10;
 
         double maxTimeSampleExploration = 80;
         double deltaTimeSampleExploration = 1.0; //0.5
+        double minDistExploration = 0.5;
         int noTriesClosestPoint = 5;
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
-        VectorXd globalTargetPosition = vec3d(-4.25, 5.65, -0.1725);
+        //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(-7.0, 1.0, 0.0);
 
         double distanceMarginLowLevel = 0.15; // 0.20
     };
@@ -153,6 +158,14 @@ namespace CBFCirc
         int index;
     };
 
+    struct OptimizePathResult
+    {
+        vector<RobotPose> path;
+        double simplifyTime;
+        double correctPathTime;
+        double filterTime;
+    };
+
     enum class MotionPlanningState
     {
         goingToGlobalGoal,
@@ -178,7 +191,7 @@ namespace CBFCirc
     bool pathFree(vector<RobotPose> path, MapQuerier querier, int initialIndex, int finalIndex, Parameters param);
     vector<RobotPose> generateSimplePath(vector<RobotPose> originalPath, MapQuerier querier, int initialIndex, int finalIndex, Parameters param);
     vector<RobotPose> correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
-    vector<RobotPose> optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
+    OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
     vector<RobotPose> upsample(vector<RobotPose> path, double minDistPos, double minDistOri);
     VectorFieldResult vectorField(RobotPose pose, vector<RobotPose> path, Parameters param);
     CBFControllerResult CBFController(RobotPose pose, VectorXd targetLinearVelocity, double targetAngularVelocity,

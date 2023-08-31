@@ -9,6 +9,7 @@
 #include <random>
 #include <memory>
 #include <chrono>
+#include <rclcpp/rclcpp.hpp>
 
 
 using namespace std;
@@ -134,7 +135,7 @@ namespace CBFCirc
         return d;
     }
 
-    NewExplorationPointResult Graph::getNewExplorationPoint(RobotPose pose, MapQuerier querier, vector<vector<VectorXd>> frontier, Parameters param)
+    NewExplorationPointResult Graph::getNewExplorationPoint(RobotPose pose, MapQuerier querier, vector<vector<VectorXd>> frontier, Parameters param, rclcpp::Logger logger)
     {
 
         NewExplorationPointResult sntr;
@@ -150,7 +151,7 @@ namespace CBFCirc
         bool triedAll = false;
         int k = 0;
 
-        cout << "Start planning. Trying to find entry point.";
+        RCLCPP_INFO_STREAM(logger, "Start planning. Trying to find entry point.");
         auto start = high_resolution_clock::now();
         do
         {
@@ -164,34 +165,34 @@ namespace CBFCirc
         } while (!found && !triedAll);
         auto stop = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(stop - start);
-        cout << "Finished in "<<((double) duration.count()/1000000.0)<<" seconds!";
+        RCLCPP_INFO_STREAM(logger, "Finished in "<<((double) duration.count()/1000000.0)<<" seconds!");
 
         if (!found)
         {
-            cout << "Failed to go to ANY point in the graph!";
+            RCLCPP_INFO_STREAM(logger, "Failed to go to ANY point in the graph!");
             sntr.success = false;
         }
         else
         {
-            cout << "Success to go to a point of the graph ("<<k<<" out of "<<closestNodesToCurrent.size()<<")";
+            RCLCPP_INFO_STREAM(logger, "Success to go to a point of the graph ("<<k<<" out of "<<closestNodesToCurrent.size()<<")");
             sntr.success = true;
         }
             
 
-        cout << "Starting frontier exploration (Type A)..." << frontier.size() << " clusters found";
+        RCLCPP_INFO_STREAM(logger, "Starting frontier exploration (Type A)..." << frontier.size() << " clusters found");
 
         if (sntr.success)
         {
             for (int i = 0; i < frontier.size(); i++)
             {
-                cout << "Computing for frontier point: "<<i;
+                RCLCPP_INFO_STREAM(logger, "Computing for frontier point: "<<i);
                 double bestDist = -VERYBIGNUMBER;
                 double tempDist;
                 VectorXd bestPoint = VectorXd::Zero(3);
                 for (int j = 0; j < frontier[i].size(); j++)
                 {
                     tempDist = computeDistRadial(querier(frontier[i][j], param.sensingRadius), frontier[i][j], param.smoothingParam).halfSqDistance;
-                    if ((tempDist > 0.5 * pow(param.distanceMinBeta, 2)) && (tempDist > bestDist))
+                    if ((tempDist > 0.5 * pow(param.minDistExploration, 2)) && (tempDist > bestDist))
                     {
                         bestDist = tempDist;
                         bestPoint = frontier[i][j];
@@ -271,11 +272,11 @@ namespace CBFCirc
                 sntr.success = true;
 
 
-                cout << "SUCCESS: Point found!";
+                RCLCPP_INFO_STREAM(logger, "SUCCESS: Point found!");
             }
             else
             {
-                cout << "ERROR: No point found using Type A algorithm...";
+                RCLCPP_INFO_STREAM(logger, "ERROR: No point found using Type A algorithm...");
                 sntr.success = false;
             }
         }

@@ -21,11 +21,10 @@
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
-#include "std_msgs/msg/int16.hpp"
-#include "geometry_msgs/msg/twist.h"
-#include <geometry_msgs/msg/detail/twist__struct.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int16.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 
 #include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
 #include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
@@ -145,8 +144,7 @@ public:
     rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr subEnd;
     std::shared_ptr<tf2_ros::TransformListener> tfListener{nullptr};
     std::unique_ptr<tf2_ros::Buffer> tfBuffer;
-    rclcpp::TimerBase::SharedPtr poseCallbackTimer;
-    rclcpp::TimerBase::SharedPtr mainLoopTimer;
+    rclcpp::TimerBase::SharedPtr poseCallbackTimer,  mainLoopTimer, lowLevelTimer, replanningTimer, graphUpdateTimer, kdTreeTimer, transitionTimer;
 
     CBFNavQuad();
     void endCallback(const std_msgs::msg::Int16::SharedPtr msg);

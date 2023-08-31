@@ -8,6 +8,7 @@
 #include <vector>
 #include <random>
 #include <memory>
+#include <rclcpp/rclcpp.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -67,7 +68,7 @@ namespace CBFCirc
         vector<GraphNode *> getNeighborNodes(VectorXd position, double radius);
         GraphNode *getNearestNode(VectorXd position);
         vector<GraphNode *> getNearestNodeList(VectorXd position);
-        NewExplorationPointResult getNewExplorationPoint(RobotPose pose, MapQuerier querier, vector<vector<VectorXd>> frontier, Parameters param);
+        NewExplorationPointResult getNewExplorationPoint(RobotPose pose, MapQuerier querier, vector<vector<VectorXd>> frontier, Parameters param, rclcpp::Logger logger);
         vector<GraphEdge *> getPath(GraphNode *origin, GraphNode *target);
     };
 
