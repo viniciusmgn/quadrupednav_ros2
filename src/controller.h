@@ -115,6 +115,7 @@ public:
     inline static VectorXd explorationPosition = VectorXd::Zero(3);
     inline static vector<RobotPose> commitedPath;
     inline static double measuredHeight;
+    inline static bool dataPrinted = false;
 
     inline static std::thread lowLevelMovementThread;
     inline static std::thread replanOmegaThread;
@@ -178,6 +179,7 @@ public:
     void debug_addMessage(int counter, string msg);
     void debug_Store(int counter);
     void debug_generateManyPathsReport(int counter);
+    static void debug_printAlgStateToMatlab(ofstream *f);
 
 private:
     // Storage and mutex lock for the latest map received

@@ -103,9 +103,23 @@ CBFNavQuad::CBFNavQuad()
 
 void CBFNavQuad::endCallback(const std_msgs::msg::Int16::SharedPtr msg)
 {
+
     int16_t ind = msg.get()->data;
     if (ind == 1)
+    {
         Global::continueAlgorithm = false;
+        if (!Global::dataPrinted)
+        {
+            RCLCPP_INFO_STREAM(this->get_logger(), "Request to quit program...");
+            RCLCPP_INFO_STREAM(this->get_logger(), "Started printing data");
+
+            ofstream file;
+            debug_printAlgStateToMatlab(&file);
+            RCLCPP_INFO_STREAM(this->get_logger(), "Debug data printed!");
+            Global::dataPrinted = true;
+            
+        }
+    }
 }
 
 void CBFNavQuad::updatePose()
@@ -489,6 +503,9 @@ void CBFNavQuad::replanCommitedPathCall()
     // DEBUG
     int counter = Global::generalCounter;
     debug_addMessage(counter, "Store event: start replanning commited path");
+    if (Global::firstPlanCreated)
+        debug_Store(counter);
+    // DEBUG
 
     auto start = high_resolution_clock::now();
 
@@ -498,33 +515,32 @@ void CBFNavQuad::replanCommitedPathCall()
 
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(counter, "CBFCircPlanMany took "+std::to_string((double) duration.count()/E106)+" s");
+    debug_addMessage(counter, "CBFCircPlanMany took " + std::to_string((double)duration.count() / E106) + " s");
 
     start = high_resolution_clock::now();
-
 
     if (gmpr.atLeastOnePathReached)
     {
         OptimizePathResult opr = optimizePath(gmpr.bestPath.path, getLidarPointsKDTree, Global::param);
         Global::commitedPath = opr.path;
 
-        debug_addMessage(counter, "CorrectPathTime: "+std::to_string(opr.correctPathTime)+" s");
-        debug_addMessage(counter, "SimplifyTime: "+std::to_string(opr.simplifyTime)+" s");
-        debug_addMessage(counter, "FilterTime: "+std::to_string(opr.filterTime)+" s");
+        debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctPathTime) + " s");
+        debug_addMessage(counter, "SimplifyTime: " + std::to_string(opr.simplifyTime) + " s");
+        debug_addMessage(counter, "FilterTime: " + std::to_string(opr.filterTime) + " s");
     }
-        
 
     Global::generateManyPathResult = gmpr;
 
     stop = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(counter, "optimizePath took "+std::to_string( (double) duration.count()/E106)+" ss");
+    debug_addMessage(counter, "optimizePath took " + std::to_string((double)duration.count() / E106) + " ss");
 
     // DEBUG
     counter = Global::generalCounter;
-    debug_addMessage(counter, "Store event: replanning commited path");
+    debug_addMessage(counter, "Store event: finished replanning commited path");
     debug_generateManyPathsReport(counter);
     debug_Store(counter);
+    // DEBUG
 
     if (Global::generateManyPathResult.atLeastOnePathReached)
     {
@@ -597,7 +613,7 @@ void CBFNavQuad::replanCommitedPathCall()
         else
         {
             // Algorithm failed
-            RCLCPP_INFO_STREAM(this->get_logger(),"Algorithm for finding new exploration points failed! Algorithm halted!");
+            RCLCPP_INFO_STREAM(this->get_logger(), "Algorithm for finding new exploration points failed! Algorithm halted!");
             Global::planningState = MotionPlanningState::failure;
             Global::continueAlgorithm = false;
         }
@@ -703,9 +719,6 @@ void CBFNavQuad::updateKDTreeCall()
     auto start = high_resolution_clock::now();
     Global::mutexUpdateKDTree.lock();
 
-    
-
-
     vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
 
     int debug_pointsAdded = 0;
@@ -746,7 +759,7 @@ void CBFNavQuad::updateKDTreeCall()
     Global::mutexUpdateKDTree.unlock();
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took "+std::to_string((double) duration.count()/E106)+" s.");
+    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took " + std::to_string((double)duration.count() / E106) + " s.");
 }
 
 void CBFNavQuad::updateKDTree()
@@ -1043,8 +1056,7 @@ void CBFNavQuad::debug_addMessage(int counter, string msg)
 
 void CBFNavQuad::debug_generateManyPathsReport(int counter)
 {
-    debug_addMessage(counter, "Omega replanned!");
-    debug_addMessage(counter, "Goal: " + printVector(Global::currentGoalPosition));
+    debug_addMessage(counter, "Path replanned!");
 
     for (int k = 0; k < Global::generateManyPathResult.pathResults.size(); k++)
     {
@@ -1063,7 +1075,7 @@ void CBFNavQuad::debug_generateManyPathsReport(int counter)
     }
 }
 
-void debug_printAlgStateToMatlab(ofstream *f)
+void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
 {
 
     time_t t = time(NULL);
@@ -1103,7 +1115,7 @@ void debug_printAlgStateToMatlab(ofstream *f)
     *f << "currentPath = processCell(load([dirData '/currentPath.csv']));" << std::endl;
     *f << "currentIndexPath = load([dirData '/currentIndexPath.csv']);" << std::endl;
     *f << "explorationPosition = load([dirData '/explorationPosition.csv']);" << std::endl;
-    *f << "messages = processMessageTable(readtable([dirData '/messages.csv']),generalCounter);" << std::endl;
+    *f << "[messages,eventReplanFlag] = processMessageTable(readtable([dirData '/messages.csv']),generalCounter);" << std::endl;
     *f << "commitedPos = processCell(load([dirData '/commitedPos.csv']));" << std::endl;
     *f << "commitedOri = processCell(load([dirData '/commitedOri.csv']));" << std::endl;
 
@@ -1545,9 +1557,13 @@ void debug_printAlgStateToMatlab(ofstream *f)
     }
 
     // WRITE: messages
+
     f->open("/home/vinicius/Desktop/matlab/unitree_planning/" + fname + "/messages.csv", ofstream::trunc);
     for (int j = 0; j < Global::messages.size(); j++)
+    {
         *f << Global::messages[j] << std::endl;
+    }
+
     f->flush();
     f->close();
 }
@@ -1557,11 +1573,13 @@ int main(int argc, char *argv[])
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<CBFNavQuad>());
 
-    cout << "Started printing data" << std::endl;
-
-    ofstream file;
-    debug_printAlgStateToMatlab(&file);
-    cout << "Debug data printed!" << std::endl;
+    if (Global::planningState == MotionPlanningState::success)
+    {
+        cout << "Started printing data" << std::endl;
+        ofstream file;
+        CBFNavQuad::debug_printAlgStateToMatlab(&file);
+        cout << "Debug data printed!" << std::endl;
+    }
 
     sleep(20);
 
