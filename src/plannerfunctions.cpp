@@ -555,7 +555,7 @@ namespace CBFCirc
 
         double cbfConst;
         if (dr.distance - param.distanceMarginPlan > 0)
-            cbfConst = -param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
+            cbfConst = -0.5 * param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
         else
             cbfConst = -param.alphaCBFNegative * (dr.distance - param.distanceMarginLowLevel);
 

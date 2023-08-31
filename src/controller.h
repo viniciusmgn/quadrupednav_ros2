@@ -77,6 +77,7 @@ public:
     int currentIndexPath;
     VectorXd explorationPosition;
     vector<RobotPose> commitedPath;
+    NewExplorationPointResult explorationResult;
 };
 
 class Global
@@ -116,12 +117,15 @@ public:
     inline static vector<RobotPose> commitedPath;
     inline static double measuredHeight;
     inline static bool dataPrinted = false;
+    inline static NewExplorationPointResult explorationResult;
 
     inline static std::thread lowLevelMovementThread;
     inline static std::thread replanOmegaThread;
     inline static std::thread updateGraphThread;
     inline static std::thread updateKDTreeThread;
     inline static std::thread transitionAlgThread;
+    inline static std::thread counterUpdateThread;
+    inline static std::thread wholeAlgorithmThread;
 };
 
 struct Contour
@@ -148,6 +152,7 @@ public:
     rclcpp::TimerBase::SharedPtr poseCallbackTimer,  mainLoopTimer, lowLevelTimer, replanningTimer, graphUpdateTimer, kdTreeTimer, transitionTimer;
 
     CBFNavQuad();
+    void wholeAlgorithm();
     void endCallback(const std_msgs::msg::Int16::SharedPtr msg);
     void updatePose();
     void mainFunction();
@@ -166,6 +171,7 @@ public:
     void updateKDTreeCall();
     void updateKDTree();
     void transitionAlg();
+
 
     // OCTOTREE
     Contour ExtractContour(const cv::Mat &free, const cv::Point &origin);

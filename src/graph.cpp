@@ -186,6 +186,9 @@ namespace CBFCirc
             for (int i = 0; i < frontier.size(); i++)
             {
                 RCLCPP_INFO_STREAM(logger, "Computing for frontier point: "<<i);
+
+                ExplorationPointDebugResult expd;
+
                 double bestDist = -VERYBIGNUMBER;
                 double tempDist;
                 VectorXd bestPoint = VectorXd::Zero(3);
@@ -198,6 +201,10 @@ namespace CBFCirc
                         bestPoint = frontier[i][j];
                     }
                 }
+
+                expd.distToObstacle = bestDist;
+                expd.point = bestPoint;
+                expd.selectedPointGraph = closestNodeToPosition->position;
 
                 if (bestDist > -VERYBIGNUMBER / 2)
                 {
@@ -228,6 +235,8 @@ namespace CBFCirc
                         cont = cont && (j<jmax);
                     }
 
+                    
+
                     if (bestValue < VERYBIGNUMBER / 2)
                     {
                         RobotPose poseBestPoint;
@@ -237,17 +246,28 @@ namespace CBFCirc
                                                                         param.maxTimeSampleExploration, param.plannerReachError, 
                                                                         param.deltaTimeSampleExploration, param);
 
-                        double dist1 = 100*(closestNodeToPosition->position - pose.position).norm();
-                        double dist2 = 100*computeDistPath(getPath(closestNodeToPosition, bestNodeToExploration));
+                        double dist1 = (closestNodeToPosition->position - pose.position).norm();
+                        double dist2 = computeDistPath(getPath(closestNodeToPosition, bestNodeToExploration));
                         double dist3 = bestValue;
                         double dist4 = gmpr2.bestPathSize;
 
+                        expd.distPointToGraph = dist1;
+                        expd.distAlongGraph = dist2;
+                        expd.distGraphToExploration = dist3;
+                        expd.distExplorationToTarget = dist4;
+                        
+
                         pointUnsorted.push_back(bestPoint);
-                        valueUnsorted.push_back(dist1 + dist2 + dist3 + dist4);
+                        valueUnsorted.push_back(100*dist1 + 100*dist2 + dist3 + dist4);
                         indexGraphUnsorted.push_back(bestNodeToExploration->id);
                         omegaUnsorted.push_back(bestOmega);
                     }
                 }
+                else
+                    RCLCPP_INFO_STREAM(logger, "Point "<<i<<" skipped!");
+
+                sntr.explorationPointDebugResult.push_back(expd);
+
             }
 
             sntr.value = {};

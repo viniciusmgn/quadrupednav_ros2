@@ -44,6 +44,17 @@ namespace CBFCirc
         GraphEdge();
     };
 
+    struct ExplorationPointDebugResult
+    {
+        VectorXd point;
+        VectorXd selectedPointGraph;
+        double distToObstacle = VERYBIGNUMBER;
+        double distPointToGraph = VERYBIGNUMBER;
+        double distAlongGraph = VERYBIGNUMBER;
+        double distGraphToExploration = VERYBIGNUMBER;
+        double distExplorationToTarget = VERYBIGNUMBER;
+    };
+
     struct NewExplorationPointResult
     {
         vector<double> value;
@@ -53,6 +64,8 @@ namespace CBFCirc
         VectorXd bestExplorationPosition;
         Matrix3d bestOmega;
         vector<GraphEdge *> pathToExplorationPoint;
+        
+        vector<ExplorationPointDebugResult> explorationPointDebugResult;
         bool success;
     };
 

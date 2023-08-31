@@ -23,7 +23,7 @@ namespace CBFCirc
 
         double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
-        double sensingRadius = 5.0;      // 3.0 5.0
+        double sensingRadius = 10.0;      // 3.0 5.0
 
         double gainRobotYaw = 4.0;         // 2.0 4.0
         double gainTargetController = 0.4; // 0.2
@@ -80,7 +80,7 @@ namespace CBFCirc
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
         //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
-        VectorXd globalTargetPosition = vec3d(-7.0, 1.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
 
         double distanceMarginLowLevel = 0.15; // 0.20
     };

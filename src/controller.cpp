@@ -51,8 +51,8 @@ using namespace Eigen;
 using namespace CBFCirc;
 using std::placeholders::_1;
 
-// std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-std::string debugging_folder = "/ros_ws/cbf_debugging";
+std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
+//std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -87,7 +87,7 @@ CBFNavQuad::CBFNavQuad()
     tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
 
     poseCallbackTimer = this->create_wall_timer(10ms, std::bind(&CBFNavQuad::updatePose, this));
-    mainLoopTimer = this->create_wall_timer(10ms, std::bind(&CBFNavQuad::mainFunction, this));
+    // mainLoopTimer = this->create_wall_timer(10ms, std::bind(&CBFNavQuad::mainFunction, this));
 
     // Initialize some global variables
     Global::startTime = now().seconds();
@@ -98,10 +98,69 @@ CBFNavQuad::CBFNavQuad()
 
     // Initialize some threads
     Global::lowLevelMovementThread = thread(std::bind(&CBFNavQuad::lowLevelMovement, this));
-    Global::replanOmegaThread = thread(std::bind(&CBFNavQuad::replanCommitedPath, this));
-    Global::updateGraphThread = thread(std::bind(&CBFNavQuad::updateGraph, this));
-    Global::updateKDTreeThread = thread(std::bind(&CBFNavQuad::updateKDTree, this));
+    // Global::replanOmegaThread = thread(std::bind(&CBFNavQuad::replanCommitedPath, this));
+    // Global::updateGraphThread = thread(std::bind(&CBFNavQuad::updateGraph, this));
+    // Global::updateKDTreeThread = thread(std::bind(&CBFNavQuad::updateKDTree, this));
     Global::transitionAlgThread = thread(std::bind(&CBFNavQuad::transitionAlg, this));
+    Global::wholeAlgorithmThread = thread(std::bind(&CBFNavQuad::wholeAlgorithm, this));
+}
+
+void CBFNavQuad::wholeAlgorithm()
+{
+    while (rclcpp::ok() && Global::continueAlgorithm)
+    {
+
+        double target_x = this->get_parameter("target_x").as_double();
+        double target_y = this->get_parameter("target_y").as_double();
+        // CBFCirc::Parameters::globalTargetPosition = vec3d(target_x, target_y, 0.0);
+
+        if (Global::measured)
+        {
+            if (Global::generalCounter % Global::param.freqDisplayMessage == 0 && (Global::planningState != MotionPlanningState::planning))
+            {
+                if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
+                {
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver2)------");
+                }
+                if (Global::planningState == MotionPlanningState::pathToExploration)
+                {
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-------PATH TO EXPLORATION-------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Point " << (Global::currentIndexPath + 1) << " of " << (Global::currentPath.size()));
+                }
+                if (Global::planningState == MotionPlanningState::goingToExplore)
+                {
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "---------GOING TO EXPLORE--------");
+                }
+                RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "distobs = " << Global::distance);
+                RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "distgoal = " << (getRobotPose().position - Global::currentGoalPosition).norm());
+                RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "omega = " << getMatrixName(Global::currentOmega));
+            }
+
+            if (Global::generalCounter % 150 == 0)
+                replanCommitedPathCall();
+
+            if (Global::generalCounter % 250 == 0)
+                updateGraphCall();
+
+            if (Global::generalCounter % 50 == 0)
+                updateKDTreeCall();
+
+            // DEBUG
+            if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
+                debug_Store(Global::generalCounter);
+
+            // DEBUG
+            Global::generalCounter++;
+            RCLCPP_DEBUG_STREAM(this->get_logger(), "Step " << Global::generalCounter);
+        }
+        else
+        {
+            RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Not measured yet...");
+        }
+
+
+        this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 }
 
 void CBFNavQuad::endCallback(const std_msgs::msg::Int16::SharedPtr msg)
@@ -120,7 +179,6 @@ void CBFNavQuad::endCallback(const std_msgs::msg::Int16::SharedPtr msg)
             debug_printAlgStateToMatlab(&file);
             RCLCPP_INFO_STREAM(this->get_logger(), "Debug data printed!");
             Global::dataPrinted = true;
-            
         }
     }
 }
@@ -177,7 +235,7 @@ void CBFNavQuad::mainFunction()
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
                 {
-                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver2)------");
                 }
                 if (Global::planningState == MotionPlanningState::pathToExploration)
                 {
@@ -196,10 +254,9 @@ void CBFNavQuad::mainFunction()
             // DEBUG
             if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
                 debug_Store(Global::generalCounter);
-
             // DEBUG
+
             Global::generalCounter++;
-            RCLCPP_DEBUG_STREAM(this->get_logger(), "Step " << Global::generalCounter);
         }
         else
         {
@@ -506,8 +563,8 @@ void CBFNavQuad::replanCommitedPathCall()
     // DEBUG
     int counter = Global::generalCounter;
     debug_addMessage(counter, "Store event: start replanning commited path");
-    if (Global::firstPlanCreated)
-        debug_Store(counter);
+    // if (Global::firstPlanCreated)
+    //     debug_Store(counter);
     // DEBUG
 
     auto start = high_resolution_clock::now();
@@ -530,13 +587,14 @@ void CBFNavQuad::replanCommitedPathCall()
         debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctPathTime) + " s");
         debug_addMessage(counter, "SimplifyTime: " + std::to_string(opr.simplifyTime) + " s");
         debug_addMessage(counter, "FilterTime: " + std::to_string(opr.filterTime) + " s");
+        debug_addMessage(counter, "PathSIze: " + std::to_string(opr.path.size()) + " points");
     }
 
     Global::generateManyPathResult = gmpr;
 
     stop = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(counter, "optimizePath took " + std::to_string((double)duration.count() / E106) + " ss");
+    debug_addMessage(counter, "optimizePath took " + std::to_string((double)duration.count() / E106) + " s");
 
     // DEBUG
     counter = Global::generalCounter;
@@ -587,6 +645,8 @@ void CBFNavQuad::replanCommitedPathCall()
         Global::mutexUpdateGraph.lock();
         NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(getRobotPose(), getLidarPointsKDTree,
                                                                               frontierPoints, Global::param, this->get_logger());
+
+        Global::explorationResult = nepr;
         Global::mutexUpdateGraph.unlock();
 
         if (nepr.success)
@@ -719,8 +779,9 @@ void CBFNavQuad::updateGraph()
 
 void CBFNavQuad::updateKDTreeCall()
 {
-    auto start = high_resolution_clock::now();
+
     Global::mutexUpdateKDTree.lock();
+    auto start = high_resolution_clock::now();
 
     vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
 
@@ -729,8 +790,14 @@ void CBFNavQuad::updateKDTreeCall()
     for (int i = 0; i < pointsFromLidar.size(); i++)
     {
         double minDist = VERYBIGNUMBER;
-        for (int j = 0; j < Global::pointsKDTree.size(); j++)
+        int j = 0;
+        bool cont = Global::pointsKDTree.size()>0;
+        while (cont)
+        {
             minDist = min(minDist, (Global::pointsKDTree[j] - pointsFromLidar[i]).squaredNorm());
+            j++;
+            cont = (j < Global::pointsKDTree.size()) && (minDist > pow(Global::param.minDistFilterKDTree, 2));
+        }
 
         if (minDist > pow(Global::param.minDistFilterKDTree, 2))
         {
@@ -762,7 +829,7 @@ void CBFNavQuad::updateKDTreeCall()
     Global::mutexUpdateKDTree.unlock();
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took " + std::to_string((double)duration.count() / E106) + " s.");
+    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took (double) " + std::to_string(duration.count() / E106) + " s");
 }
 
 void CBFNavQuad::updateKDTree()
@@ -772,9 +839,13 @@ void CBFNavQuad::updateKDTree()
 
         if (Global::measured && (Global::generalCounter % Global::param.freqUpdateKDTree == 0))
         {
+            auto start = high_resolution_clock::now();
             RCLCPP_DEBUG(rclcpp::get_logger("kdtree_logger"), "kdtree call start");
             updateKDTreeCall();
             RCLCPP_DEBUG(rclcpp::get_logger("kdtree_logger"), "kdtree call end");
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            debug_addMessage(Global::generalCounter, "Took " + std::to_string((double)duration.count() / E106) + " s to update KDTree.");
         }
         int sleep_interval = this->get_parameter("update_kdtree_loop_sleep_ms").as_int();
         this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
@@ -1048,6 +1119,7 @@ void CBFNavQuad::debug_Store(int counter)
     dfd.currentIndexPath = Global::currentIndexPath;
     dfd.explorationPosition = Global::explorationPosition;
     dfd.commitedPath = Global::commitedPath;
+    dfd.explorationResult = Global::explorationResult;
 
     Global::dataForDebug.push_back(dfd);
 }
@@ -1121,6 +1193,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     *f << "[messages,eventReplanFlag] = processMessageTable(readtable([dirData '/messages.csv']),generalCounter);" << std::endl;
     *f << "commitedPos = processCell(load([dirData '/commitedPos.csv']));" << std::endl;
     *f << "commitedOri = processCell(load([dirData '/commitedOri.csv']));" << std::endl;
+    *f << "explorationResultData = processCell(load([dirData '/explorationResultData.csv']));" << std::endl;
 
     // Write planned paths
     vector<string> names = {};
@@ -1558,6 +1631,44 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         f->flush();
         f->close();
     }
+
+    // VectorXd point;
+    // VectorXd selectedPointGraph;
+    // double distToObstacle = VERYBIGNUMBER;
+    // double distPointToGraph = VERYBIGNUMBER;
+    // double distAlongGraph = VERYBIGNUMBER;
+    // double distGraphToExploration = VERYBIGNUMBER;
+    // double distExplorationToTarget = VERYBIGNUMBER;
+
+    // WRITE: exploration data
+    f->open(debugging_folder + "/" + fname + "/explorationResultData.csv", ofstream::trunc);
+    tempVectorVector = {};
+    for (int i = 0; i < Global::dataForDebug.size(); i++)
+    {
+        tempVector = {};
+        for (int j = 0; j < Global::dataForDebug[i].explorationResult.explorationPointDebugResult.size(); j++)
+        {
+            VectorXd data = VectorXd::Zero(11);
+            data[0] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[0];
+            data[1] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[1];
+            data[2] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[2];
+            data[3] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[0];
+            data[4] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[1];
+            data[5] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[2];
+            data[6] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distToObstacle;
+            data[7] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distPointToGraph;
+            data[8] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distAlongGraph;
+            data[9] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distGraphToExploration;
+            data[10] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distExplorationToTarget;
+
+            tempVector.push_back(data);
+        }
+
+        tempVectorVector.push_back(tempVector);
+    }
+    printVectorVectorsToCSV(f, tempVectorVector, 11);
+    f->flush();
+    f->close();
 
     // WRITE: messages
     f->open(debugging_folder + "/" + fname + "/messages.csv", ofstream::trunc);
