@@ -533,7 +533,10 @@ namespace CBFCirc
         double H = sqrt(1 - (1 - VERYSMALLNUMBER) * G * G);
 
         // Compute the final vector field:
-        VectorXd v = param.maxTotalVel * (0.5 * G * N + H * T);
+        double s = ((double) ind)/((double) path.size());
+        double mult = s<0.9? 1.0: 10.0*(1.0-s);
+
+        VectorXd v = param.maxTotalVel * (0.5 * G * N + mult * H * T);
 
         vfr.linearVelocity = vec3d(v[0], v[1], 0);
         vfr.angularVelocity = v[2];

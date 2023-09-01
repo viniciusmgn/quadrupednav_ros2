@@ -52,7 +52,7 @@ using namespace CBFCirc;
 using std::placeholders::_1;
 
 std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-//std::string debugging_folder = "/ros_ws/cbf_debugging";
+// std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -103,6 +103,20 @@ CBFNavQuad::CBFNavQuad()
     // Global::updateKDTreeThread = thread(std::bind(&CBFNavQuad::updateKDTree, this));
     Global::transitionAlgThread = thread(std::bind(&CBFNavQuad::transitionAlg, this));
     Global::wholeAlgorithmThread = thread(std::bind(&CBFNavQuad::wholeAlgorithm, this));
+    Global::storeDataThread = thread(std::bind(&CBFNavQuad::storeData, this));
+}
+
+void CBFNavQuad::storeData()
+{
+
+    while (rclcpp::ok() && Global::continueAlgorithm)
+    {
+        if (Global::measured && Global::firstPlanCreated  && Global::planningState != MotionPlanningState::planning)
+            debug_Store(Global::generalCounter);
+        
+        this_thread::sleep_for(std::chrono::milliseconds(1500));
+    }
+    
 }
 
 void CBFNavQuad::wholeAlgorithm()
@@ -116,6 +130,9 @@ void CBFNavQuad::wholeAlgorithm()
 
         if (Global::measured)
         {
+
+            // CBFNavQuad::transitionAlgCall();
+
             if (Global::generalCounter % Global::param.freqDisplayMessage == 0 && (Global::planningState != MotionPlanningState::planning))
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
@@ -146,8 +163,8 @@ void CBFNavQuad::wholeAlgorithm()
                 updateKDTreeCall();
 
             // DEBUG
-            if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
-                debug_Store(Global::generalCounter);
+            // if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
+            //     debug_Store(Global::generalCounter);
 
             // DEBUG
             Global::generalCounter++;
@@ -157,7 +174,6 @@ void CBFNavQuad::wholeAlgorithm()
         {
             RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Not measured yet...");
         }
-
 
         this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -440,8 +456,53 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
         if (maxDist > max(Global::param.boundingRadius, Global::param.boundingHeight / 2))
             frontierPointsFiltered.push_back(frontierPoints[i]);
     }
+
+    // Group points
+    vector<VectorXd> centerPoint = {};
+    for (int i = 0; i < frontierPointsFiltered.size(); i++)
+    {
+        VectorXd center = vec3d(0, 0, 0);
+        for (int j = 0; j < frontierPointsFiltered[i].size(); j++)
+            center += frontierPointsFiltered[i][j];
+
+        center = center / ((double)frontierPointsFiltered[i].size());
+        centerPoint.push_back(center);
+    }
+
+    vector<vector<int>> groups = {{0}};
+    for (int i = 1; i < frontierPointsFiltered.size(); i++)
+    {
+        bool cont = true;
+        int j = -1;
+        double minDist;
+        while (cont)
+        {
+            j++;
+            minDist = VERYBIGNUMBER;
+            for (int k = 0; k < groups[j].size(); k++)
+                minDist = min(minDist, (centerPoint[i] - centerPoint[groups[j][k]]).norm());
+
+            cont = j + 1 < groups.size() && (minDist > Global::param.distGroupFrontierPoints);
+        }
+
+        if (minDist <= Global::param.distGroupFrontierPoints)
+            groups[j].push_back(i);
+        else
+            groups.push_back({i});
+    }
+
+    vector<vector<VectorXd>> frontierPointsGrouped = {};
+
+    for (int i = 0; i < groups.size(); i++)
+    {
+        frontierPointsGrouped.push_back({});
+        for (int j = 0; j < groups[i].size(); j++)
+            for (int k = 0; k < frontierPointsFiltered[groups[i][j]].size(); k++)
+                frontierPointsGrouped[i].push_back(frontierPointsFiltered[groups[i][j]][k]);
+    }
+
     Global::mutexUpdateKDTree.unlock_shared();
-    return frontierPointsFiltered;
+    return frontierPointsGrouped;
 }
 
 vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radius)
@@ -587,7 +648,7 @@ void CBFNavQuad::replanCommitedPathCall()
         debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctPathTime) + " s");
         debug_addMessage(counter, "SimplifyTime: " + std::to_string(opr.simplifyTime) + " s");
         debug_addMessage(counter, "FilterTime: " + std::to_string(opr.filterTime) + " s");
-        debug_addMessage(counter, "PathSIze: " + std::to_string(opr.path.size()) + " points");
+        debug_addMessage(counter, "PathSize: " + std::to_string(opr.path.size()) + " points");
     }
 
     Global::generateManyPathResult = gmpr;
@@ -641,7 +702,11 @@ void CBFNavQuad::replanCommitedPathCall()
             frontierPoints = getFrontierPoints();
         }
 
+        RCLCPP_INFO_STREAM(this->get_logger(), "Start to update graph");
         updateGraphCall();
+        RCLCPP_INFO_STREAM(this->get_logger(), "Graph updated");
+
+
         Global::mutexUpdateGraph.lock();
         NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(getRobotPose(), getLidarPointsKDTree,
                                                                               frontierPoints, Global::param, this->get_logger());
@@ -652,7 +717,8 @@ void CBFNavQuad::replanCommitedPathCall()
         if (nepr.success)
         {
             // Algorithm succesful
-            debug_addMessage(counter, "Frontier point selection successful... replanning path");
+            RCLCPP_INFO_STREAM(this->get_logger(), "Frontier point selection successful!");
+            debug_addMessage(counter, "Frontier point selection successful!");
 
             Global::currentPath = nepr.pathToExplorationPoint;
             Global::currentIndexPath = 0;
@@ -661,15 +727,15 @@ void CBFNavQuad::replanCommitedPathCall()
 
             // DEBUG
             debug_addMessage(counter, "Store event: beginning to travel path");
-            debug_generateManyPathsReport(counter);
-            debug_Store(counter);
+            // debug_generateManyPathsReport(counter);
+            // debug_Store(counter);
             // DEBUG
 
-            Global::mutexReplanCommitedPath.unlock();
-            Global::mutexUpdateKDTree.unlock_shared();
-            replanCommitedPathCall();
-            Global::mutexReplanCommitedPath.lock();
-            Global::mutexUpdateKDTree.lock_shared();
+            // Global::mutexReplanCommitedPath.unlock();
+            // Global::mutexUpdateKDTree.unlock_shared();
+            // replanCommitedPathCall();
+            // Global::mutexReplanCommitedPath.lock();
+            // Global::mutexUpdateKDTree.lock_shared();
 
             Global::planningState = MotionPlanningState::pathToExploration;
         }
@@ -716,13 +782,17 @@ void CBFNavQuad::updateGraphCall()
         vector<int> indexes;
         vector<Matrix3d> omegas;
 
+        vector<GraphNode *> nodeListSorted = Global::graph.getNearestNodeList(correctedPoint);
+
+    
+
         int i = 0;
         bool cont = true;
 
         while (cont)
         {
             RobotPose pose;
-            pose.position = Global::graph.nodes[i]->position;
+            pose.position = nodeListSorted[i]->position;
             pose.orientation = 0;
 
             GenerateManyPathsResult gmpr = CBFCircPlanMany(pose, correctedPoint, getLidarPointsKDTree,
@@ -737,17 +807,18 @@ void CBFNavQuad::updateGraphCall()
             }
 
             i++;
-            cont = cont && (i < Global::graph.nodes.size());
+            cont = cont && (i < nodeListSorted.size());
         }
 
         if (distances.size() > 0)
         {
             vector<int> ind = sortGiveIndex(distances);
             GraphNode *newNode = Global::graph.addNode(correctedPoint);
-            Global::graph.connect(Global::graph.nodes[indexes[ind[0]]], newNode, distances[ind[0]], omegas[ind[0]]);
+            Global::graph.connect(nodeListSorted[indexes[ind[0]]], newNode, distances[ind[0]], omegas[ind[0]]);
 
             // DEBUG
-            debug_addMessage(Global::generalCounter, "Graph updates with a new node!");
+            double opfac = 100*(1.0 - ((double) i)/((double) nodeListSorted.size()));
+            debug_addMessage(Global::generalCounter, "Graph updates with a new node! Optimization factor: "+std::to_string(opfac));
             //
         }
         else
@@ -783,7 +854,7 @@ void CBFNavQuad::updateKDTreeCall()
     Global::mutexUpdateKDTree.lock();
     auto start = high_resolution_clock::now();
 
-    vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
+    vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.updateKDTreepRadius);
 
     int debug_pointsAdded = 0;
 
@@ -791,7 +862,7 @@ void CBFNavQuad::updateKDTreeCall()
     {
         double minDist = VERYBIGNUMBER;
         int j = 0;
-        bool cont = Global::pointsKDTree.size()>0;
+        bool cont = Global::pointsKDTree.size() > 0;
         while (cont)
         {
             minDist = min(minDist, (Global::pointsKDTree[j] - pointsFromLidar[i]).squaredNorm());
@@ -852,6 +923,62 @@ void CBFNavQuad::updateKDTree()
     }
 }
 
+void CBFNavQuad::transitionAlgCall()
+{
+    bool pointReached = (getRobotPose().position - Global::currentGoalPosition).norm() <= Global::param.plannerReachError;
+
+    if ((Global::planningState == MotionPlanningState::goingToGlobalGoal) && pointReached)
+    {
+        Global::planningState = MotionPlanningState::success;
+        Global::continueAlgorithm = false;
+
+        // DEBUG
+        debug_addMessage(Global::generalCounter, "Success!");
+        // DEBUG
+    }
+
+    if ((Global::planningState == MotionPlanningState::goingToExplore) && pointReached)
+    {
+        Global::planningState = MotionPlanningState::goingToGlobalGoal;
+        Global::currentGoalPosition = Global::param.globalTargetPosition;
+
+        Global::currentPath = {};
+        Global::currentIndexPath = -1;
+        Global::explorationPosition = VectorXd::Zero(3);
+
+        replanCommitedPathCall();
+
+        // DEBUG
+        debug_addMessage(Global::generalCounter, "Reached exploration point. Going to global target!");
+        // DEBUG
+    }
+
+    if ((Global::planningState == MotionPlanningState::pathToExploration) && pointReached)
+    {
+        if (Global::currentIndexPath == Global::currentPath.size() - 1)
+        {
+            Global::planningState = MotionPlanningState::goingToExplore;
+            Global::currentGoalPosition = Global::explorationPosition;
+
+            replanCommitedPathCall();
+
+            // DEBUG
+            debug_addMessage(Global::generalCounter, "Reached last point on the path. Going to explore a frontier...");
+            // DEBUG
+        }
+        else
+        {
+            // DEBUG
+            debug_addMessage(Global::generalCounter, "Reached point " + std::to_string(Global::currentIndexPath));
+            // DEBUG
+
+            Global::currentIndexPath++;
+            Global::currentGoalPosition = Global::currentPath[Global::currentIndexPath]->nodeIn->position;
+            Global::currentOmega = Global::currentPath[Global::currentIndexPath]->omega;
+        }
+    }
+}
+
 void CBFNavQuad::transitionAlg()
 {
     while (rclcpp::ok() && Global::continueAlgorithm)
@@ -859,7 +986,7 @@ void CBFNavQuad::transitionAlg()
 
         if (Global::measured)
         {
-            RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call start");
+            // RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call start");
             bool pointReached = (getRobotPose().position - Global::currentGoalPosition).norm() <= Global::param.plannerReachError;
 
             if ((Global::planningState == MotionPlanningState::goingToGlobalGoal) && pointReached)
@@ -881,7 +1008,7 @@ void CBFNavQuad::transitionAlg()
                 Global::currentIndexPath = -1;
                 Global::explorationPosition = VectorXd::Zero(3);
 
-                replanCommitedPathCall();
+                //replanCommitedPathCall();
 
                 // DEBUG
                 debug_addMessage(Global::generalCounter, "Reached exploration point. Going to global target!");
@@ -895,7 +1022,7 @@ void CBFNavQuad::transitionAlg()
                     Global::planningState = MotionPlanningState::goingToExplore;
                     Global::currentGoalPosition = Global::explorationPosition;
 
-                    replanCommitedPathCall();
+                    //replanCommitedPathCall();
 
                     // DEBUG
                     debug_addMessage(Global::generalCounter, "Reached last point on the path. Going to explore a frontier...");
@@ -912,7 +1039,7 @@ void CBFNavQuad::transitionAlg()
                     Global::currentOmega = Global::currentPath[Global::currentIndexPath]->omega;
                 }
             }
-            RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call end");
+            // RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call end");
         }
         int sleep_interval = this->get_parameter("transition_loop_sleep_ms").as_int();
         this_thread::sleep_for(std::chrono::milliseconds(sleep_interval));
@@ -1104,9 +1231,9 @@ void CBFNavQuad::debug_Store(int counter)
     dfd.gradSafetyPosition = Global::gradSafetyPosition;
     dfd.gradSafetyOrientation = Global::gradSafetyOrientation;
     dfd.witnessDistance = Global::witnessDistance;
-    dfd.currentLidarPoints = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
+    dfd.currentLidarPoints = getLidarPointsSource(getRobotPose().position, Global::param.updateKDTreepRadius);
     Global::mutexUpdateKDTree.lock_shared();
-    dfd.currentLidarPointsKDTree = getLidarPointsKDTree(getRobotPose().position, Global::param.sensingRadius);
+    dfd.currentLidarPointsKDTree = getLidarPointsKDTree(getRobotPose().position, Global::param.updateKDTreepRadius);
     Global::mutexUpdateKDTree.unlock_shared();
     dfd.currentGoalPosition = Global::currentGoalPosition;
     dfd.generateManyPathResult = Global::generateManyPathResult;

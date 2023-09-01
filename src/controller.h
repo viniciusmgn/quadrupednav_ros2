@@ -105,10 +105,13 @@ public:
     inline static Graph graph;
     inline static Kdtree::KdTree *kdTree;
     inline static vector<VectorXd> pointsKDTree = {};
+    inline static vector<vector<VectorXd>> frontierPoints = {};
+
     inline static shared_timed_mutex mutexUpdateKDTree;
     inline static mutex mutexReplanCommitedPath;
     inline static mutex mutexUpdateGraph;
     inline static shared_timed_mutex mutexGetLidarPoints;
+
     inline static vector<DataForDebug> dataForDebug = {};
     inline static Parameters param;
     inline static vector<GraphEdge *> currentPath = {};
@@ -126,6 +129,7 @@ public:
     inline static std::thread transitionAlgThread;
     inline static std::thread counterUpdateThread;
     inline static std::thread wholeAlgorithmThread;
+    inline static std::thread storeDataThread;
 };
 
 struct Contour
@@ -152,6 +156,7 @@ public:
     rclcpp::TimerBase::SharedPtr poseCallbackTimer,  mainLoopTimer, lowLevelTimer, replanningTimer, graphUpdateTimer, kdTreeTimer, transitionTimer;
 
     CBFNavQuad();
+    void storeData();
     void wholeAlgorithm();
     void endCallback(const std_msgs::msg::Int16::SharedPtr msg);
     void updatePose();
@@ -171,6 +176,7 @@ public:
     void updateKDTreeCall();
     void updateKDTree();
     void transitionAlg();
+    void transitionAlgCall();
 
 
     // OCTOTREE

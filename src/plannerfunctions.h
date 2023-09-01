@@ -23,7 +23,8 @@ namespace CBFCirc
 
         double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
-        double sensingRadius = 10.0;      // 3.0 5.0
+        double updateKDTreepRadius = 10.0;      // 3.0 5.0
+        double sensingRadius = 5.0;      // 3.0 5.0
 
         double gainRobotYaw = 4.0;         // 2.0 4.0
         double gainTargetController = 0.4; // 0.2
@@ -51,7 +52,7 @@ namespace CBFCirc
         double stepCorrectPoint = 0.1;
         double radiusCreateNode = 1.5; // 0.8
         double maxTimePlanConnectNode = 50;
-        double acceptableMinDist=1.0;
+        double acceptableMinDist=2.5;
 
         double minDistFilterKDTree = 0.15; // 0.3
 
@@ -72,6 +73,8 @@ namespace CBFCirc
         int noIterationsCorrectPath = 3; //7
         double correctPathStep = 0.3; //0.15
         int filterWindow = 10;
+
+        double distGroupFrontierPoints = 1.0;
 
         double maxTimeSampleExploration = 80;
         double deltaTimeSampleExploration = 1.0; //0.5
