@@ -24,7 +24,7 @@ namespace CBFCirc
         double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
         double updateKDTreepRadius = 10.0;      // 3.0 5.0
-        double sensingRadius = 5.0;      // 3.0 5.0
+        double sensingRadius = 3.0;      // 3.0 5.0
 
         double gainRobotYaw = 4.0;         // 2.0 4.0
         double gainTargetController = 0.4; // 0.2
@@ -35,8 +35,8 @@ namespace CBFCirc
         double maxTotalVel = 0.3;
         double distanceMarginPlan = 0.05; // 0.20
 
-        double deltaTimePlanner = 0.2;   // 0.1
-        double maxTimePlanner = 150;     // 50 100
+        double deltaTimePlanner = 0.4;   // 0.1 0.2
+        double maxTimePlanner = 300;     // 50 100 150
         double plannerReachError = 0.50; // 0.25
         double plannerOmegaPlanReachError = 0.30; // 0.25
         double acceptableRationPlanning = 2.0;
@@ -51,7 +51,7 @@ namespace CBFCirc
         double noMaxIterationsCorrectPoint = 40;
         double stepCorrectPoint = 0.1;
         double radiusCreateNode = 1.5; // 0.8
-        double maxTimePlanConnectNode = 50;
+        double maxTimePlanConnectNode = 100; //50
         double acceptableMinDist=2.5;
 
         double minDistFilterKDTree = 0.15; // 0.3

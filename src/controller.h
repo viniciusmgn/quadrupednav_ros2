@@ -130,6 +130,8 @@ public:
     inline static std::thread counterUpdateThread;
     inline static std::thread wholeAlgorithmThread;
     inline static std::thread storeDataThread;
+
+    inline static bool asynchronousPlan = false;
 };
 
 struct Contour
@@ -167,7 +169,7 @@ public:
     void setLinearVelocity(VectorXd linearVelocity);
     vector<vector<VectorXd>> getFrontierPoints();
     vector<VectorXd> getLidarPointsSource(VectorXd position, double radius);
-    static vector<VectorXd> getLidarPointsKDTree(VectorXd position, double radius);
+    vector<VectorXd> getLidarPointsKDTree(VectorXd position, double radius);
     void lowLevelMovement();
     void replanCommitedPathCall();
     void replanCommitedPath();

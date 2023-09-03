@@ -161,6 +161,8 @@ namespace CBFCirc
                                     param.plannerReachError, param.deltaTimeSampleExploration, param)
                         .atLeastOnePathReached;
 
+            RCLCPP_INFO_STREAM(logger, "Tried to go to node "<<closestNodeToPosition->id<<": "<<found);
+
             triedAll = k >= closestNodesToCurrent.size();
         } while (!found && !triedAll);
         auto stop = high_resolution_clock::now();
@@ -258,7 +260,7 @@ namespace CBFCirc
                         
 
                         pointUnsorted.push_back(bestPoint);
-                        valueUnsorted.push_back(100*dist1 + 100*dist2 + dist3 + dist4);
+                        valueUnsorted.push_back(100*dist1 + 100*dist2 + 100*dist3 + dist4);
                         indexGraphUnsorted.push_back(bestNodeToExploration->id);
                         omegaUnsorted.push_back(bestOmega);
                     }
