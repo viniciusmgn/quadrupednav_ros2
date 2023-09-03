@@ -210,7 +210,23 @@ namespace CBFCirc
 
                 if (bestDist > -VERYBIGNUMBER / 2)
                 {
-                    vector<GraphNode *> closestNodesToBestPoint = getNearestNodeList(bestPoint);
+                    vector<GraphNode *> closestNodesToBestPoint;
+                    vector<GraphNode *> closestNodesToBestPointUns = getNearestNodeList(bestPoint);
+                    vector<double> distToNode;
+
+                    for(int k=0; k < closestNodesToBestPointUns.size(); k++)
+                    {
+                        double dist1 = (closestNodeToPosition->position - pose.position).norm();
+                        double dist2 = computeDistPath(getPath(closestNodeToPosition, closestNodesToBestPointUns[k]));
+                        double dist3 = (closestNodesToBestPointUns[k]->position - bestPoint).norm();
+                        distToNode.push_back(dist1 + dist2 + dist3);
+                    }
+
+                    vector<int> ind = sortGiveIndex(distToNode);
+
+                    for(int k=0; k < closestNodesToBestPointUns.size(); k++)
+                        closestNodesToBestPoint.push_back(closestNodesToBestPointUns[ind[k]]);
+
 
                     GraphNode *bestNodeToExploration;
                     double bestValue = VERYBIGNUMBER;
@@ -257,6 +273,8 @@ namespace CBFCirc
                         expd.distAlongGraph = dist2;
                         expd.distGraphToExploration = dist3;
                         expd.distExplorationToTarget = dist4;
+                        expd.bestNodeToExploration = bestNodeToExploration->position;
+                        expd.grade = 100*dist1 + 100*dist2 + 100*dist3 + dist4;
                         
 
                         pointUnsorted.push_back(bestPoint);

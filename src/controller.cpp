@@ -51,8 +51,8 @@ using namespace Eigen;
 using namespace CBFCirc;
 using std::placeholders::_1;
 
-std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-//std::string debugging_folder = "/ros_ws/cbf_debugging";
+//std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
+std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -136,7 +136,7 @@ void CBFNavQuad::wholeAlgorithm()
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
                 {
-                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver3)------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver6)------");
                 }
                 if (Global::planningState == MotionPlanningState::pathToExploration)
                 {
@@ -152,18 +152,22 @@ void CBFNavQuad::wholeAlgorithm()
                 RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "omega = " << getMatrixName(Global::currentOmega));
             }
 
+            // if (Global::generalCounter % 1000 == 0)
+            //     refreshWholeMapCall();
+
             if (Global::generalCounter % 150 == 0 || Global::asynchronousPlan)
             {
                 Global::asynchronousPlan = false;
                 replanCommitedPathCall();
             }
-                
 
             if (Global::generalCounter % 250 == 0)
                 updateGraphCall();
 
             if (Global::generalCounter % 50 == 0)
                 updateKDTreeCall();
+
+
 
             // DEBUG
             // if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
@@ -751,7 +755,7 @@ void CBFNavQuad::replanCommitedPathCall()
 
             // Global::mutexReplanCommitedPath.unlock();
             // Global::mutexUpdateKDTree.unlock_shared();
-            //CBFNavQuad::replanCommitedPathCall();
+            // CBFNavQuad::replanCommitedPathCall();
             Global::asynchronousPlan = true;
             // Global::mutexReplanCommitedPath.lock();
             // Global::mutexUpdateKDTree.lock_shared();
@@ -868,6 +872,37 @@ void CBFNavQuad::updateGraph()
     }
 }
 
+void CBFNavQuad::refreshWholeMapCall()
+{
+    auto start = high_resolution_clock::now();
+
+    Global::pointsKDTree = {};
+    for (int k = 0; k < Global::graph.nodes.size(); k++)
+    {
+        vector<VectorXd> pointsFromLidar = getLidarPointsSource(Global::graph.nodes[k]->position, Global::param.updateKDTreepRadius);
+
+        for (int i = 0; i < pointsFromLidar.size(); i++)
+        {
+            double minDist = VERYBIGNUMBER;
+            int j = 0;
+            bool cont = Global::pointsKDTree.size() > 0;
+            while (cont)
+            {
+                minDist = min(minDist, (Global::pointsKDTree[j] - pointsFromLidar[i]).squaredNorm());
+                j++;
+                cont = (j < Global::pointsKDTree.size()) && (minDist > pow(Global::param.minDistFilterKDTree, 2));
+            }
+
+            if (minDist > pow(Global::param.minDistFilterKDTree, 2))
+                Global::pointsKDTree.push_back(pointsFromLidar[i]);
+        }
+    }
+
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    debug_addMessage(Global::generalCounter, "Updated the entire map. Took " + std::to_string(duration.count() / E106) + " s");
+}
+
 void CBFNavQuad::updateKDTreeCall()
 {
 
@@ -920,7 +955,7 @@ void CBFNavQuad::updateKDTreeCall()
     Global::mutexUpdateKDTree.unlock();
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took (double) " + std::to_string(duration.count() / E106) + " s");
+    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took " + std::to_string(duration.count() / E106) + " s");
 }
 
 void CBFNavQuad::updateKDTree()
@@ -1795,25 +1830,29 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
         tempVector = {};
         for (int j = 0; j < Global::dataForDebug[i].explorationResult.explorationPointDebugResult.size(); j++)
         {
-            VectorXd data = VectorXd::Zero(11);
+            VectorXd data = VectorXd::Zero(15);
             data[0] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[0];
             data[1] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[1];
             data[2] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].point[2];
             data[3] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[0];
             data[4] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[1];
             data[5] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].selectedPointGraph[2];
-            data[6] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distToObstacle;
-            data[7] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distPointToGraph;
-            data[8] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distAlongGraph;
-            data[9] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distGraphToExploration;
-            data[10] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distExplorationToTarget;
+            data[6] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].bestNodeToExploration[0];
+            data[7] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].bestNodeToExploration[1];
+            data[8] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].bestNodeToExploration[2];
+            data[9] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distToObstacle;
+            data[10] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distPointToGraph;
+            data[11] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distAlongGraph;
+            data[12] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distGraphToExploration;
+            data[13] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].distExplorationToTarget;
+            data[14] = Global::dataForDebug[i].explorationResult.explorationPointDebugResult[j].grade;
 
             tempVector.push_back(data);
         }
 
         tempVectorVector.push_back(tempVector);
     }
-    printVectorVectorsToCSV(f, tempVectorVector, 11);
+    printVectorVectorsToCSV(f, tempVectorVector, 15);
     f->flush();
     f->close();
 

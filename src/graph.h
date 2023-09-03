@@ -48,11 +48,13 @@ namespace CBFCirc
     {
         VectorXd point;
         VectorXd selectedPointGraph;
+        VectorXd bestNodeToExploration;
         double distToObstacle = VERYBIGNUMBER;
         double distPointToGraph = VERYBIGNUMBER;
         double distAlongGraph = VERYBIGNUMBER;
         double distGraphToExploration = VERYBIGNUMBER;
         double distExplorationToTarget = VERYBIGNUMBER;
+        double grade = VERYBIGNUMBER;
     };
 
     struct NewExplorationPointResult

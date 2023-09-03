@@ -179,6 +179,7 @@ public:
     void updateKDTree();
     void transitionAlg();
     void transitionAlgCall();
+    void refreshWholeMapCall();
 
 
     // OCTOTREE

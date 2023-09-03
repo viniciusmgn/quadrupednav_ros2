@@ -30,7 +30,7 @@ namespace CBFCirc
         double gainTargetController = 0.4; // 0.2
         double alphaCBFPositive = 1.0;
         double alphaCBFNegative = 6.0;   // 7.5 //6
-        double distanceMinBeta = 0.10; // 0.5 0.3 0.4 0.50 0.30
+        double distanceMinBeta = 0.15; // 0.5 0.3 0.4 0.50 0.30
         double maxVelCircBeta = 1.25;  // 0.5 0.5
         double maxTotalVel = 0.3;
         double distanceMarginPlan = 0.05; // 0.20
