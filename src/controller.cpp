@@ -24,8 +24,6 @@
 #include <boost/multi_array.hpp>
 #include <typeinfo>
 #include <boost/filesystem.hpp>
-#include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
-#include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
 
 #include "./kdtree-cpp-master/kdtree.hpp"
 #include "./kdtree-cpp-master/kdtree.cpp"
@@ -410,7 +408,7 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
     }
 
     // DEBUG Visualize before post-processing
-    // VisualizeFrontierCall(free_map, occupied_map, response);
+    VisualizeFrontierCall(free_map, occupied_map, ffpr);
 
     // Post-processing to convert points into real coordinates
     for (size_t i = 0; i < ffpr.frontiers.size(); ++i)
@@ -1138,43 +1136,38 @@ void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg
     }
 }
 
-void CBFNavQuad::VisualizeFrontierCall(
-    const cv::Mat &free_map,
-    const cv::Mat &occupied_map,
-    const std::shared_ptr<cbf_circ_interfaces::srv::FindFrontierPoints::Response>
-        frontier)
-{
-    cv::Mat visual;
-    cv::Mat zero_image(free_map.rows, free_map.cols, CV_8UC1, cv::Scalar(0));
-    std::vector<cv::Mat> channels{zero_image, free_map, occupied_map};
-    cv::merge(channels, visual);
+void CBFNavQuad::VisualizeFrontierCall(const cv::Mat& free_map,
+                                       const cv::Mat& occupied_map,
+                                       const FindFrontierPointResult& frontier) {
+  cv::Mat visual;
+  cv::Mat zero_image(free_map.rows, free_map.cols, CV_8UC1, cv::Scalar(0));
+  std::vector<cv::Mat> channels{zero_image, free_map, occupied_map};
+  cv::merge(channels, visual);
 
-    // Add different color for each cluster
-    static std::random_device dev;
-    static std::mt19937 rng(dev());
-    static std::uniform_int_distribution<std::mt19937::result_type> sample_255(0, 255);
-    cv::Scalar cluster_color(255, 0, 255);
-    size_t previous_cluster_id = 0;
+  // Add different color for each cluster
+  static std::random_device dev;
+  static std::mt19937 rng(dev());
+  static std::uniform_int_distribution<std::mt19937::result_type> sample_255(0, 255);
+  cv::Scalar cluster_color(255, 0, 255);
+  size_t previous_cluster_id = 0;
 
-    for (size_t i = 0; i < frontier->frontiers.size(); ++i)
-    {
-        // Resample color for a new cluster
-        if (previous_cluster_id != frontier->cluster_id[i])
-        {
-            cluster_color = cv::Scalar(sample_255(rng), sample_255(rng), sample_255(rng));
-        }
-
-        cv::Point pt(frontier->frontiers[i].x, frontier->frontiers[i].y);
-        cv::circle(visual, pt, 0, cluster_color, 1);
-
-        previous_cluster_id = frontier->cluster_id[i];
+  for (size_t i = 0; i < frontier.frontiers.size(); ++i) {
+    // Resample color for a new cluster
+    if (previous_cluster_id != frontier.cluster_id[i]) {
+      cluster_color = cv::Scalar(sample_255(rng), sample_255(rng), sample_255(rng));
     }
 
-    // Correct the direction for better visualization
-    cv::flip(visual, visual, 0);
-    sensor_msgs::msg::Image::SharedPtr visMsg =
-        cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", visual).toImageMsg();
-    debug_visualizer.publish(visMsg);
+    cv::Point pt(frontier.frontiers[i].x, frontier.frontiers[i].y);
+    cv::circle(visual, pt, 0, cluster_color, 1);
+
+    previous_cluster_id = frontier.cluster_id[i];
+  }
+
+  // Correct the direction for better visualization
+  cv::flip(visual, visual, 0);
+  sensor_msgs::msg::Image::SharedPtr visMsg =
+      cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", visual).toImageMsg();
+  debug_visualizer.publish(visMsg);
 }
 
 FindFrontierPointResult CBFNavQuad::FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin)

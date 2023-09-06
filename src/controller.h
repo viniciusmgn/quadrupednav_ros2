@@ -25,9 +25,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/int16.hpp>
 #include <geometry_msgs/msg/twist.hpp>
-
-#include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
-#include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
+#include <geometry_msgs/msg/point.hpp>
 
 #include <cv_bridge/cv_bridge.h>
 #include <octomap/OcTree.h>
@@ -186,7 +184,7 @@ public:
     void OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg);
     double MilliSecondsSinceTime(const rclcpp::Time &start);
     void VisualizeFrontierCall(const cv::Mat &free_map, const cv::Mat &occupied_map,
-                               const std::shared_ptr<cbf_circ_interfaces::srv::FindFrontierPoints::Response> frontier);
+                               const FindFrontierPointResult& frontier);
     FindFrontierPointResult FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin);
 
     // DEBUG

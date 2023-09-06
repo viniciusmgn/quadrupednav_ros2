@@ -26,7 +26,6 @@ find_package(octomap_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
-find_package(cbf_circ_interfaces REQUIRED)
 find_package(OpenCV REQUIRED)
 
 include_directories(
@@ -44,7 +43,7 @@ find_package(Boost REQUIRED COMPONENTS
 # find_package(<dependency> REQUIRED)
 
 add_executable(controller src/controller.cpp)
-ament_target_dependencies(controller rclcpp std_msgs geometry_msgs tf2_ros octomap_ros cv_bridge cbf_circ_interfaces image_transport)
+ament_target_dependencies(controller rclcpp std_msgs geometry_msgs tf2_ros octomap_ros cv_bridge image_transport)
 target_include_directories(controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
