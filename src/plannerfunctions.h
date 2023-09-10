@@ -17,9 +17,9 @@ namespace CBFCirc
 
     struct Parameters
     {
-        double boundingRadius = 0.3; // 0.3 0.35
-        double boundingHeight = 1.35;
-        double smoothingParam = 0.3; // 0.1 0.3 0.5
+        double boundingRadius = 0.25; // 0.3 0.35 0.25
+        double boundingHeight = 1.25;
+        double smoothingParam = 0.15; // 0.1 0.3 0.5 0.3
 
         double constantHeight = -0.03; // 0.8 -0.1725 -0.08
         double marginSafety = 0.4;       // 0.8
@@ -30,7 +30,7 @@ namespace CBFCirc
         double gainTargetController = 0.4; // 0.2
         double alphaCBFPositive = 1.0;
         double alphaCBFNegative = 6.0;   // 7.5 //6
-        double distanceMinBeta = 0.15; // 0.5 0.3 0.4 0.50 0.30
+        double distanceMinBeta = 0.10; // 0.5 0.3 0.4 0.50 0.30 0.15
         double maxVelCircBeta = 1.25;  // 0.5 0.5
         double maxTotalVel = 0.3;
         double distanceMarginPlan = 0.05; // 0.20
@@ -50,7 +50,7 @@ namespace CBFCirc
 
         double noMaxIterationsCorrectPoint = 40;
         double stepCorrectPoint = 0.1;
-        double radiusCreateNode = 1.5; // 0.8
+        double radiusCreateNode = 2.0; // 0.8 1.5
         double maxTimePlanConnectNode = 100; //50
         double acceptableMinDist=2.5;
 
@@ -59,31 +59,33 @@ namespace CBFCirc
         int sampleFactorStorePath = 15;
         int sampleFactorLidarSource = 15; //5
 
-        double minAcceptableNegativeDist = -0.35;
+        double minAcceptableNegativeDist = -0.35; //-0.35
 
 
         int noMaxOptimizePath = 10;
         double upsampleMinPos = 0.01; //0.01
         double upsampleMinOri = 0.01; //0.01
         double vectorFieldAlpha = 2.0;
-        
         double distCutoffCorrect = 0.6;
         int generateSimplePathDiv = 100;
-        double distPathFree = 0.05;
-        int noIterationsCorrectPath = 3; //7
-        double correctPathStep = 0.3; //0.15
+        
+        double distPathFreePlan = 0.15;
+        int noIterationsCorrectPath = 6; //7
+        double correctPathStep = 0.3; //0.15 //0.3
         int filterWindow = 10;
 
         double distGroupFrontierPoints = 1.0;
 
         double maxTimeSampleExploration = 80;
         double deltaTimeSampleExploration = 1.0; //0.5
-        double minDistExploration = 0.5;
+        double minDistExploration = 0.8; //0.5
         int noTriesClosestPoint = 5;
+        double distPathFreeGraph = 0.05;
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
         //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
-        VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(-20.0, -10.0, 0.0);
+        //VectorXd globalTargetPosition = vec3d(6.0, 0.0, 0.0);
 
         double distanceMarginLowLevel = 0.15; // 0.20
     };
@@ -164,9 +166,16 @@ namespace CBFCirc
     struct OptimizePathResult
     {
         vector<RobotPose> path;
+        double minDist;
         double simplifyTime;
         double correctPathTime;
         double filterTime;
+    };
+
+    struct CorrectPathResult
+    {
+        vector<RobotPose> path;
+        double minDist;
     };
 
     enum class MotionPlanningState
@@ -191,9 +200,9 @@ namespace CBFCirc
                                             double maxTime, double reachpointError, double deltaTime, Parameters param);
     RadialDistanceResult computeDistRadial(vector<VectorXd> points, VectorXd position, double smoothingParam);
     VectorXd correctPoint(VectorXd point, vector<VectorXd> neighborPoints, Parameters param);
-    bool pathFree(vector<RobotPose> path, MapQuerier querier, int initialIndex, int finalIndex, Parameters param);
+    bool pathFree(vector<RobotPose> path, MapQuerier querier, int initialIndex, int finalIndex, double distTol, Parameters param);
     vector<RobotPose> generateSimplePath(vector<RobotPose> originalPath, MapQuerier querier, int initialIndex, int finalIndex, Parameters param);
-    vector<RobotPose> correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
+    CorrectPathResult correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
     OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param);
     vector<RobotPose> upsample(vector<RobotPose> path, double minDistPos, double minDistOri);
     VectorFieldResult vectorField(RobotPose pose, vector<RobotPose> path, Parameters param);

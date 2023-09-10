@@ -296,17 +296,17 @@ namespace CBFCirc
         return pointCorrected;
     }
 
-    bool pathFree(vector<RobotPose> path, MapQuerier querier, int initialIndex, int finalIndex, Parameters param)
+    bool pathFree(vector<RobotPose> path, MapQuerier querier, int initialIndex, int finalIndex, double distTol, Parameters param)
     {
         if (finalIndex - initialIndex < 5)
             return true;
         else
         {
             int midIndex = (int)(finalIndex + initialIndex) / 2;
-            if (computeDist(querier(path[midIndex].position, param.sensingRadius), path[midIndex], param).distance < param.distPathFree)
+            if (computeDist(querier(path[midIndex].position, param.sensingRadius), path[midIndex], param).distance < distTol)
                 return false;
             else
-                return pathFree(path, querier, initialIndex, midIndex, param) && pathFree(path, querier, midIndex, finalIndex, param);
+                return pathFree(path, querier, initialIndex, midIndex, distTol, param) && pathFree(path, querier, midIndex, finalIndex, distTol, param);
         }
     }
 
@@ -326,16 +326,19 @@ namespace CBFCirc
             simplePath.push_back(intPose);
         }
 
-        if (pathFree(simplePath, querier, 0, simplePath.size() - 1, param))
+        if (pathFree(simplePath, querier, 0, simplePath.size() - 1, param.distPathFreePlan, param))
             return simplePath;
         else
             return {};
     }
 
-    vector<RobotPose> correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
+    CorrectPathResult correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
     {
+        CorrectPathResult cpr;
         vector<double> pathLength = {0};
         vector<RobotPose> modifiedPath = {originalPath[0]};
+
+        cpr.minDist = VERYBIGNUMBER;
 
         for (int i = 0; i < originalPath.size() - 1; i++)
         {
@@ -361,32 +364,79 @@ namespace CBFCirc
                 modifiedPath[i].position += fat * param.correctPathStep * dr.gradSafetyPosition / norm;
                 modifiedPath[i].orientation += fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
             }
+            cpr.minDist = min(cpr.minDist, computeDist(querier(modifiedPath[i].position, param.sensingRadius), modifiedPath[i], param).distance);
+            // DistanceResult dr = computeDist(querier(modifiedPath[i].position, param.sensingRadius), modifiedPath[i], param);
+            // int j =0;
+            // bool cont=true;
+            // RobotPose candPose;
+
+            // do
+            // {
+            //     fat = sqrt(1.0 + VERYSMALLNUMBER - pathLength[i]) * max(0.0, 1.0 - dr.distance / param.distCutoffCorrect);
+
+            //     double norm = sqrt(dr.gradSafetyPosition.squaredNorm() + pow(dr.gradSafetyOrientation, 2)) + VERYSMALLNUMBER;
+            //     // modifiedPath[i].position += fat * param.correctPathStep * dr.gradSafetyPosition / norm;
+            //     // modifiedPath[i].orientation += fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
+
+            //     candPose.position = modifiedPath[i].position + fat * param.correctPathStep * dr.gradSafetyPosition / norm;
+            //     candPose.orientation = modifiedPath[i].orientation + fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
+
+            //     DistanceResult drNew = computeDist(querier(candPose.position, param.sensingRadius), candPose, param);
+            //     j++;
+            //     cont = (j < param.noIterationsCorrectPath) && (drNew.distance > dr.distance);
+            //     if(drNew.distance > dr.distance)
+            //     {
+            //         modifiedPath[i] = candPose;
+            //         dr = drNew;
+            //     }
+            // }while(cont);
         }
 
-        return modifiedPath;
+        
+        cpr.path = modifiedPath;
+
+        return cpr;
     }
 
     OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
     {
 
-        vector<RobotPose> path = {};
+        
         OptimizePathResult opr;
+
+
+
+
+        // Correct path
+        auto start = high_resolution_clock::now();
+
+        CorrectPathResult cpr  = correctPath(originalPath, querier, param);
+        vector<RobotPose> correctedPath = cpr.path;
+        opr.minDist = cpr.minDist;
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+        opr.correctPathTime = (double)  duration.count()/E106;
+
+
+
 
         // Reduze size
         int indexPath = -1;
-        int currentIndex = originalPath.size() - 1;
+        int currentIndex = correctedPath.size() - 1;
         int i = 0;
 
-        auto start = high_resolution_clock::now();
+        start = high_resolution_clock::now();
+        vector<RobotPose> path = {};
 
-        while (indexPath != originalPath.size() - 1 && i < param.noMaxOptimizePath)
+        while (indexPath != correctedPath.size() - 1 && i < param.noMaxOptimizePath)
         {
-            vector<RobotPose> tryPath = generateSimplePath(originalPath, querier, 0, currentIndex, param);
+            vector<RobotPose> tryPath = generateSimplePath(correctedPath, querier, 0, currentIndex, param);
             if (tryPath.size() > 0)
             {
                 path = tryPath;
                 indexPath = currentIndex;
-                currentIndex = (originalPath.size() - 1 + currentIndex) / 2;
+                currentIndex = (correctedPath.size() - 1 + currentIndex) / 2;
             }
             else
                 currentIndex = currentIndex / 2;
@@ -394,31 +444,20 @@ namespace CBFCirc
             i++;
         }
 
-        vector<RobotPose> optimizedPath = {};
+        vector<RobotPose> simplifiedPath = {};
 
         for (int i = 0; i < path.size(); i++)
-            optimizedPath.push_back(path[i]);
+            simplifiedPath.push_back(path[i]);
 
-        for (int i = indexPath + 1; i < originalPath.size(); i++)
-            optimizedPath.push_back(originalPath[i]);
-
-        auto stop = high_resolution_clock::now();
-        auto duration = duration_cast<microseconds>(stop - start);
-        opr.simplifyTime = (double)  duration.count()/E106;
-
-        start = high_resolution_clock::now();    
-
-        // Correct path
-        start = high_resolution_clock::now();
-
-        optimizedPath = correctPath(optimizedPath, querier, param);
+        for (int i = indexPath + 1; i < correctedPath.size(); i++)
+            simplifiedPath.push_back(correctedPath[i]);
 
         stop = high_resolution_clock::now();
         duration = duration_cast<microseconds>(stop - start);
-        opr.correctPathTime = (double)  duration.count()/E106;
+        opr.simplifyTime = (double)  duration.count()/E106;   
 
         // Upsample:
-        optimizedPath = upsample(optimizedPath, param.upsampleMinPos, param.upsampleMinOri);
+        vector<RobotPose>  optimizedPath = upsample(simplifiedPath, param.upsampleMinPos, param.upsampleMinOri);
 
         // Filter
         start = high_resolution_clock::now();

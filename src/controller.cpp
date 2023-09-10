@@ -24,8 +24,6 @@
 #include <boost/multi_array.hpp>
 #include <typeinfo>
 #include <boost/filesystem.hpp>
-#include "cbf_circ_interfaces/srv/find_frontier_points.hpp"
-#include "cbf_circ_interfaces/srv/find_neighbor_points.hpp"
 
 #include "./kdtree-cpp-master/kdtree.hpp"
 #include "./kdtree-cpp-master/kdtree.cpp"
@@ -46,13 +44,16 @@
 #include "plannerfunctions.cpp"
 #include "controller.h"
 
+#include <boost/tokenizer.hpp>
+
 using namespace std;
 using namespace Eigen;
 using namespace CBFCirc;
 using std::placeholders::_1;
+using namespace boost;
 
-//std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-std::string debugging_folder = "/ros_ws/cbf_debugging";
+std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
+//std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -96,6 +97,10 @@ CBFNavQuad::CBFNavQuad()
     VectorXd startingPosition = vec3d(0, 0, Global::param.constantHeight);
     Global::graph.addNode(startingPosition);
 
+    // DEBUG TEST
+    //debugTest();
+    //
+
     // Initialize some threads
     Global::lowLevelMovementThread = thread(std::bind(&CBFNavQuad::lowLevelMovement, this));
     // Global::replanOmegaThread = thread(std::bind(&CBFNavQuad::replanCommitedPath, this));
@@ -106,13 +111,128 @@ CBFNavQuad::CBFNavQuad()
     Global::storeDataThread = thread(std::bind(&CBFNavQuad::storeData, this));
 }
 
+void CBFNavQuad::debugTest()
+{
+
+    Global::pointsKDTree = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataEnvironments.csv", 3);
+
+    // Build the KDTree
+    Kdtree::KdNodeVector nodes;
+
+    // Guarantee that it has at least one node
+    vector<double> point(3);
+    point[0] = VERYBIGNUMBER;
+    point[1] = VERYBIGNUMBER;
+    point[2] = VERYBIGNUMBER;
+    nodes.push_back(Kdtree::KdNode(point));
+
+    for (int i = 0; i < Global::pointsKDTree.size(); i++)
+    {
+        vector<double> point(3);
+        point[0] = Global::pointsKDTree[i][0];
+        point[1] = Global::pointsKDTree[i][1];
+        point[2] = Global::pointsKDTree[i][2];
+        nodes.push_back(Kdtree::KdNode(point));
+    }
+
+    Global::kdTree = new Kdtree::KdTree(&nodes, 2);
+
+    //
+    vector<vector<VectorXd>> frontierPoints = getFrontierPoints();
+    //
+
+    vector<VectorXd> graphNodes = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataGraphNode.csv", 3);
+    vector<VectorXd> graphEdges = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataGraphEdge.csv", 3);
+
+    for (int i = 1; i < graphNodes.size(); i++)
+        Global::graph.addNode(graphNodes[i]);
+
+    for (int i = 0; i < graphEdges.size(); i++)
+    {
+        int ind1 = (int)graphEdges[i][0];
+        int ind2 = (int)graphEdges[i][1];
+        double val = graphEdges[i][2];
+
+        Global::graph.connect(Global::graph.nodes[ind1], Global::graph.nodes[ind2], val, Matrix3d::Zero(3, 3));
+    }
+
+    vector<VectorXd> explorationPoints = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataExploration.csv", 3);
+
+    vector<vector<VectorXd>> explorationPointsVec;
+
+    for (int i = 0; i < explorationPoints.size(); i++)
+        explorationPointsVec.push_back({explorationPoints[i]});
+
+    //
+    RobotPose pose;
+    vector<VectorXd> poseData = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/pose.csv", 4);
+
+    pose.position = vec3d(poseData[0][0],poseData[0][1],poseData[0][2]);
+    pose.orientation = poseData[0][3];
+
+    // NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(
+    //     pose,
+    //     [this](VectorXd position, double radius)
+    //     { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+    //     explorationPointsVec, Global::param, this->get_logger());
+
+    
+
+    GenerateManyPathsResult gmpr = CBFCircPlanMany(
+        pose, Global::param.globalTargetPosition,
+        [this](VectorXd position, double radius)
+        { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+        Global::param.maxTimePlanner, Global::param.plannerOmegaPlanReachError,
+        Global::param.deltaTimePlanner, Global::param);
+
+    OptimizePathResult opr = optimizePath(
+        gmpr.bestPath.path, [this](VectorXd position, double radius)
+        { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+        Global::param);
+
+    ofstream f;
+    f.open("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/ppopt.csv", ofstream::trunc);
+
+    for (int i = 0; i < opr.path.size(); i++)
+        f << opr.path[i].position[0] << ";" << opr.path[i].position[1] << ";" << opr.path[i].position[2] << ";" << opr.path[i].orientation << std::endl;
+
+    f.flush();
+
+    ofstream g0, g1;
+    // g.open("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/ppraw.csv", ofstream::trunc);
+    // for (int i = 0; i < gmpr.bestPath.path.size(); i++)
+    //     g << gmpr.bestPath.path[i].position[0] << ";" << gmpr.bestPath.path[i].position[1] << ";" << gmpr.bestPath.path[i].position[2] << ";" << gmpr.bestPath.path[i].orientation << std::endl;
+
+    g0.open("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/ppraw0.csv", ofstream::trunc);
+    for (int i = 0; i < gmpr.pathResults[0].path.size(); i++)
+        g0 << gmpr.pathResults[0].path[i].position[0] << ";" << gmpr.pathResults[0].path[i].position[1] << ";" << gmpr.pathResults[0].path[i].position[2] << ";" << gmpr.pathResults[0].path[i].orientation << std::endl;
+
+    g0.flush();
+
+    g1.open("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/ppraw1.csv", ofstream::trunc);
+    for (int i = 0; i < gmpr.pathResults[1].path.size(); i++)
+        g1 << gmpr.pathResults[1].path[i].position[0] << ";" << gmpr.pathResults[1].path[i].position[1] << ";" << gmpr.pathResults[1].path[i].position[2] << ";" << gmpr.pathResults[1].path[i].orientation << std::endl;
+
+    g1.flush();
+}
+
 void CBFNavQuad::storeData()
 {
 
     while (rclcpp::ok() && Global::continueAlgorithm)
     {
-        if (Global::measured && Global::firstPlanCreated && Global::planningState != MotionPlanningState::planning)
+
+        if (Global::measured && Global::firstPlanCreated && Global::planningState != MotionPlanningState::planning && Global::generalCounter > 10)
+        {
+            if (Global::storeCounter % 4 == 0)
+                Global::frontierPoints = getFrontierPoints();
+
             debug_Store(Global::generalCounter);
+
+            Global::storeCounter++;
+        }
+
+        
 
         this_thread::sleep_for(std::chrono::milliseconds(1500));
     }
@@ -136,7 +256,7 @@ void CBFNavQuad::wholeAlgorithm()
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
                 {
-                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver6)------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver47)------");
                 }
                 if (Global::planningState == MotionPlanningState::pathToExploration)
                 {
@@ -155,19 +275,23 @@ void CBFNavQuad::wholeAlgorithm()
             // if (Global::generalCounter % 1000 == 0)
             //     refreshWholeMapCall();
 
-            if (Global::generalCounter % 150 == 0 || Global::asynchronousPlan)
+            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update KD Tree");
+
+            if (Global::generalCounter % 50 == 0)
+                updateKDTreeCall();
+
+            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Replan commited path");
+
+            if (Global::generalCounter % 300 == 0 || Global::asynchronousPlan) //150 500
             {
                 Global::asynchronousPlan = false;
                 replanCommitedPathCall();
             }
 
+            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update Graph Call");
+
             if (Global::generalCounter % 250 == 0)
                 updateGraphCall();
-
-            if (Global::generalCounter % 50 == 0)
-                updateKDTreeCall();
-
-
 
             // DEBUG
             // if (Global::firstPlanCreated && (Global::generalCounter % Global::param.freqStoreDebug == 0) && (Global::planningState != MotionPlanningState::planning))
@@ -345,8 +469,8 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
         return frontierPoints;
     }
 
-    double rz_min = Global::param.constantHeight - 0.2;
-    double rz_max = Global::param.constantHeight + 0.2;
+    double rz_min = Global::measuredHeight - 0.2;
+    double rz_max = Global::measuredHeight + 0.2;
 
     // Pixelize, with 2px buffer for boundary points
     double x_max, y_max, z_max, x_min, y_min, z_min;
@@ -414,7 +538,7 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
     }
 
     // DEBUG Visualize before post-processing
-    // VisualizeFrontierCall(free_map, occupied_map, response);
+    //VisualizeFrontierCall(free_map, occupied_map, ffpr);
 
     // Post-processing to convert points into real coordinates
     for (size_t i = 0; i < ffpr.frontiers.size(); ++i)
@@ -510,6 +634,7 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
 
     Global::mutexUpdateKDTree.unlock_shared();
     return frontierPointsGrouped;
+    //return frontierPoints;
 }
 
 vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radius)
@@ -530,8 +655,8 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
     // Set bounds of the map to be extracted
     {
         std::unique_lock<std::mutex> lock(octomap_lock);
-        octomap::point3d max_bounds(position[0] + radius, position[1] + radius, position[2] + radius),
-            min_bounds(position[0] - radius, position[1] - radius, position[2] - radius);
+        octomap::point3d max_bounds(position[0] + radius, position[1] + radius, Global::measuredHeight + height_range),
+            min_bounds(position[0] - radius, position[1] - radius, Global::measuredHeight - height_range);
 
         int k = 0;
         for (octomap::OcTree::leaf_bbx_iterator
@@ -544,7 +669,7 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
             if ((k % fact == 0) && (it->getLogOdds() > 0))
             {
                 double x = it.getX(), y = it.getY(), z = it.getZ();
-                if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
+                //if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
                     points.push_back(vec3d(x, y, Global::param.constantHeight));
             }
 
@@ -552,6 +677,27 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
                 k++;
         }
     }
+
+    // DONT FORGET TO REMOVE: add noise
+    // if (abs(Global::generalCounter - 500) < 40)
+    // {
+    //     RobotPose pose = getRobotPose();
+
+    //     for (int k = 0; k < 20; k++)
+    //     {
+    //         double X = pose.position[0] + 0.5 * cos(pose.orientation) + rand(-0.5, 0.5);
+    //         double Y = pose.position[1] + 0.5 * sin(pose.orientation) + rand(-0.5, 0.5);
+    //         double Z = pose.position[2];
+    //         points.push_back(vec3d(X, Y, Z));
+    //     }
+    //     for (int k = 0; k < 20; k++)
+    //     {
+    //         double X = pose.position[0] - 0.5 * cos(pose.orientation) + rand(-0.5, 0.5);
+    //         double Y = pose.position[1] - 0.5 * sin(pose.orientation) + rand(-0.5, 0.5);
+    //         double Z = pose.position[2];
+    //         points.push_back(vec3d(X, Y, Z));
+    //     }
+    // }
 
     return points;
 }
@@ -594,7 +740,9 @@ void CBFNavQuad::lowLevelMovement()
     {
         if (Global::measured && Global::firstPlanCreated)
         {
-            RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call start");
+            //RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call start");
+            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Low level");
+
             if (Global::planningState != MotionPlanningState::planning && Global::commitedPath.size() > 1)
             {
                 vector<VectorXd> pointsLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
@@ -604,7 +752,10 @@ void CBFNavQuad::lowLevelMovement()
                                                          pointsLidar, Global::param);
 
                 // Send the twist
-                double multiplicative_factor = 1.0;
+                double multiplicative_factor = 1.3;
+
+                // multiplicative_factor = min(max(1.4*(cccr.distanceResult.distance-0.05)/(1.0-0.05),0.0),1.4);
+
                 setTwist(multiplicative_factor * cccr.linearVelocity, multiplicative_factor * cccr.angularVelocity);
                 // setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
 
@@ -629,9 +780,9 @@ void CBFNavQuad::lowLevelMovement()
 void CBFNavQuad::replanCommitedPathCall()
 {
 
-    Global::mutexReplanCommitedPath.lock();
+    //Global::mutexReplanCommitedPath.lock();
     updateKDTreeCall();
-    Global::mutexUpdateKDTree.lock_shared();
+    //Global::mutexUpdateKDTree.lock_shared();
 
     // DEBUG
     int counter = Global::generalCounter;
@@ -655,27 +806,29 @@ void CBFNavQuad::replanCommitedPathCall()
     auto duration = duration_cast<microseconds>(stop - start);
     debug_addMessage(counter, "CBFCircPlanMany took " + std::to_string((double)duration.count() / E106) + " s");
 
-    start = high_resolution_clock::now();
-
+    OptimizePathResult opr;
     if (gmpr.atLeastOnePathReached)
     {
-        OptimizePathResult opr = optimizePath(
+        start = high_resolution_clock::now();
+
+        opr = optimizePath(
             gmpr.bestPath.path, [this](VectorXd position, double radius)
             { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
             Global::param);
         Global::commitedPath = opr.path;
+        Global::currentOmega = gmpr.bestOmega;
 
         debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctPathTime) + " s");
         debug_addMessage(counter, "SimplifyTime: " + std::to_string(opr.simplifyTime) + " s");
         debug_addMessage(counter, "FilterTime: " + std::to_string(opr.filterTime) + " s");
         debug_addMessage(counter, "PathSize: " + std::to_string(opr.path.size()) + " points");
+        debug_addMessage(counter, "minDist " + std::to_string(opr.minDist) + "");
+        stop = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(stop - start);
+        debug_addMessage(counter, "optimizePath took " + std::to_string((double)duration.count() / E106) + " s");
     }
 
     Global::generateManyPathResult = gmpr;
-
-    stop = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(counter, "optimizePath took " + std::to_string((double)duration.count() / E106) + " s");
 
     // DEBUG
     counter = Global::generalCounter;
@@ -684,7 +837,7 @@ void CBFNavQuad::replanCommitedPathCall()
     debug_Store(counter);
     // DEBUG
 
-    if (Global::generateManyPathResult.atLeastOnePathReached)
+    if (Global::generateManyPathResult.atLeastOnePathReached && opr.minDist > -0.20)
     {
         double lengthCurrentOmega;
         for (int j = 0; j < Global::generateManyPathResult.pathResults.size(); j++)
@@ -714,64 +867,107 @@ void CBFNavQuad::replanCommitedPathCall()
         debug_addMessage(counter, "Failed to find path... plan to explore frontier!");
 
         Global::planningState = MotionPlanningState::planning;
-        vector<vector<VectorXd>> frontierPoints = getFrontierPoints();
-        while (frontierPoints.size() == 0)
+        vector<vector<VectorXd>> frontierPoints;
+
+        for (int i = 0; i < 3; i++)
         {
-            RCLCPP_INFO_STREAM(this->get_logger(), "No frontier points found... trying again...");
-            std::this_thread::sleep_for(std::chrono::seconds(5));
             frontierPoints = getFrontierPoints();
+            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
+
+        // while (frontierPoints.size() == 0)
+        // {
+        //     //RCLCPP_INFO_STREAM(this->get_logger(), "No frontier points found... trying again...");
+        //     std::this_thread::sleep_for(std::chrono::seconds(1));
+        //     frontierPoints = getFrontierPoints();
+        // }
 
         RCLCPP_INFO_STREAM(this->get_logger(), "Start to update graph");
         updateGraphCall();
         RCLCPP_INFO_STREAM(this->get_logger(), "Graph updated");
 
-        Global::mutexUpdateGraph.lock();
-        NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(
-            getRobotPose(),
-            [this](VectorXd position, double radius)
-            { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
-            frontierPoints, Global::param, this->get_logger());
+        bool cont = true;
 
-        Global::explorationResult = nepr;
-        Global::mutexUpdateGraph.unlock();
-
-        if (nepr.success)
+        while (cont)
         {
-            // Algorithm succesful
-            RCLCPP_INFO_STREAM(this->get_logger(), "Frontier point selection successful!");
-            debug_addMessage(counter, "Frontier point selection successful!");
+            Global::mutexUpdateGraph.lock();
+            NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(
+                getRobotPose(),
+                [this](VectorXd position, double radius)
+                { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+                frontierPoints, Global::param, this->get_logger());
 
-            Global::currentPath = nepr.pathToExplorationPoint;
-            Global::currentIndexPath = 0;
-            Global::explorationPosition = nepr.bestExplorationPosition;
-            Global::currentGoalPosition = Global::currentPath[0]->nodeOut->position;
+            Global::explorationResult = nepr;
+            Global::mutexUpdateGraph.unlock();
 
-            // DEBUG
-            debug_addMessage(counter, "Store event: beginning to travel path");
-            // debug_generateManyPathsReport(counter);
-            // debug_Store(counter);
-            // DEBUG
+            if (nepr.success)
+            {
+                // Algorithm succesful
+                RCLCPP_INFO_STREAM(this->get_logger(), "Frontier point selection successful!");
+                debug_addMessage(counter, "Frontier point selection successful!");
 
-            // Global::mutexReplanCommitedPath.unlock();
-            // Global::mutexUpdateKDTree.unlock_shared();
-            // CBFNavQuad::replanCommitedPathCall();
-            Global::asynchronousPlan = true;
-            // Global::mutexReplanCommitedPath.lock();
-            // Global::mutexUpdateKDTree.lock_shared();
+                // Try to see if it can go to exploration point
+                GenerateManyPathsResult gmpr = CBFCircPlanMany(
+                    getRobotPose(), nepr.bestExplorationPosition,
+                    [this](VectorXd position, double radius)
+                    { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+                    Global::param.maxTimePlanner, Global::param.plannerOmegaPlanReachError,
+                    Global::param.deltaTimePlanner, Global::param);
 
-            Global::planningState = MotionPlanningState::pathToExploration;
-        }
-        else
-        {
-            // Algorithm failed
-            RCLCPP_INFO_STREAM(this->get_logger(), "Algorithm for finding new exploration points failed! Algorithm halted!");
-            Global::planningState = MotionPlanningState::failure;
-            Global::continueAlgorithm = false;
+                if (gmpr.atLeastOnePathReached)
+                {
+                    RCLCPP_INFO_STREAM(this->get_logger(), "Skipped travelling to graph!");
+                    debug_addMessage(counter, "Skipped travelling to graph");
+                    Global::explorationPosition = nepr.bestExplorationPosition;
+                    Global::currentGoalPosition = nepr.bestExplorationPosition;
+                    Global::planningState = MotionPlanningState::goingToExplore;
+                    OptimizePathResult opr = optimizePath(
+                        gmpr.bestPath.path, [this](VectorXd position, double radius)
+                        { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
+                        Global::param);
+                    Global::commitedPath = opr.path;
+                    Global::currentOmega = gmpr.bestOmega;
+                }
+                else
+                {
+                    Global::currentPath = nepr.pathToExplorationPoint;
+                    Global::currentIndexPath = 0;
+                    Global::explorationPosition = nepr.bestExplorationPosition;
+                    Global::currentGoalPosition = Global::currentPath[0]->nodeOut->position;
+
+                    // DEBUG
+                    debug_addMessage(counter, "Store event: beginning to travel path");
+                    // debug_generateManyPathsReport(counter);
+                    // debug_Store(counter);
+                    // DEBUG
+
+                    // Global::mutexReplanCommitedPath.unlock();
+                    // Global::mutexUpdateKDTree.unlock_shared();
+                    // CBFNavQuad::replanCommitedPathCall();
+                    Global::asynchronousPlan = true;
+                    // Global::mutexReplanCommitedPath.lock();
+                    // Global::mutexUpdateKDTree.lock_shared();
+
+                    Global::planningState = MotionPlanningState::pathToExploration;
+                }
+            }
+            else
+            {
+                // Algorithm failed
+                RCLCPP_INFO_STREAM(this->get_logger(), "Algorithm for finding new exploration points failed! Trying again");
+                debug_Store(Global::generalCounter);
+                // Global::planningState = MotionPlanningState::failure;
+                // Global::continueAlgorithm = false;
+                RCLCPP_INFO_STREAM(this->get_logger(), "Update KDTree");
+                updateKDTreeCall(true);
+                RCLCPP_INFO_STREAM(this->get_logger(), "Finished, trying again");
+            }
+
+            cont = !nepr.success;
         }
     }
-    Global::mutexUpdateKDTree.unlock_shared();
-    Global::mutexReplanCommitedPath.unlock();
+    //Global::mutexUpdateKDTree.unlock_shared();
+    //Global::mutexReplanCommitedPath.unlock();
 }
 
 void CBFNavQuad::replanCommitedPath()
@@ -903,7 +1099,7 @@ void CBFNavQuad::refreshWholeMapCall()
     debug_addMessage(Global::generalCounter, "Updated the entire map. Took " + std::to_string(duration.count() / E106) + " s");
 }
 
-void CBFNavQuad::updateKDTreeCall()
+void CBFNavQuad::updateKDTreeCall(bool forceRemove)
 {
 
     Global::mutexUpdateKDTree.lock();
@@ -912,6 +1108,7 @@ void CBFNavQuad::updateKDTreeCall()
     vector<VectorXd> pointsFromLidar = getLidarPointsSource(getRobotPose().position, Global::param.updateKDTreepRadius);
 
     int debug_pointsAdded = 0;
+    int debug_pointsRemoved = 0;
 
     for (int i = 0; i < pointsFromLidar.size(); i++)
     {
@@ -932,6 +1129,55 @@ void CBFNavQuad::updateKDTreeCall()
         }
     }
 
+    // Check if some points should be removed
+    if (forceRemove || (Global::generalCounter % 50 == 0 && Global::generalCounter > 0)) //150
+    {
+        vector<VectorXd> pointsFromKDaround = getLidarPointsKDTree(getRobotPose().position, Global::param.updateKDTreepRadius);
+        vector<VectorXd> pointsToRemove;
+
+        for (int i = 0; i < pointsFromKDaround.size(); i++)
+        {
+            double mindDist = VERYBIGNUMBER;
+            double minDist = VERYBIGNUMBER;
+            int j = 0;
+            bool cont = pointsFromLidar.size() > 0;
+            while (cont)
+            {
+                minDist = min(minDist, (pointsFromLidar[j] - pointsFromKDaround[i]).squaredNorm());
+                j++;
+                cont = (j < pointsFromLidar.size()) && (minDist > pow(0.1, 2));
+            }
+
+            if (minDist > pow(0.1, 2))
+            {
+                pointsToRemove.push_back(pointsFromKDaround[i]);
+                debug_pointsRemoved++;
+            }
+        }
+
+        vector<int> indToRemove;
+
+        for (int i = 0; i < pointsToRemove.size(); i++)
+        {
+            bool cont = Global::pointsKDTree.size() > 0;
+            int j = 0;
+            while (cont)
+            {
+                cont = (pointsToRemove[i] - Global::pointsKDTree[j]).norm() > 0.01 && j + 1 < Global::pointsKDTree.size();
+                j++;
+            }
+            j--;
+            if (j + 1 < Global::pointsKDTree.size())
+                indToRemove.push_back(j);
+        }
+
+        sort(indToRemove.begin(), indToRemove.end());
+
+        for (int i = indToRemove.size() - 1; i >= 0; i--)
+            Global::pointsKDTree.erase(Global::pointsKDTree.begin() + indToRemove[i]);
+    }
+
+    // Build the KDTree
     Kdtree::KdNodeVector nodes;
 
     // Guarantee that it has at least one node
@@ -955,7 +1201,9 @@ void CBFNavQuad::updateKDTreeCall()
     Global::mutexUpdateKDTree.unlock();
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    debug_addMessage(Global::generalCounter, "Updated KD Tree with " + std::to_string(debug_pointsAdded) + " points. Took " + std::to_string(duration.count() / E106) + " s");
+    debug_addMessage(Global::generalCounter, "Updated KD Tree adding " + std::to_string(debug_pointsAdded) +
+                                                 " points an removing " + std::to_string(debug_pointsRemoved) + ". Took " +
+                                                 std::to_string(duration.count() / E106) + " s");
 }
 
 void CBFNavQuad::updateKDTree()
@@ -1085,13 +1333,17 @@ void CBFNavQuad::transitionAlg()
                 }
                 else
                 {
-                    // DEBUG
-                    debug_addMessage(Global::generalCounter, "Reached point " + std::to_string(Global::currentIndexPath));
-                    // DEBUG
+
 
                     Global::currentIndexPath++;
                     Global::currentGoalPosition = Global::currentPath[Global::currentIndexPath]->nodeIn->position;
                     Global::currentOmega = Global::currentPath[Global::currentIndexPath]->omega;
+
+                    Global::asynchronousPlan = true;
+
+                    // DEBUG
+                    debug_addMessage(Global::generalCounter, "Reached point " + std::to_string(Global::currentIndexPath));
+                    // DEBUG
                 }
             }
             // RCLCPP_DEBUG(rclcpp::get_logger("transition_logger"), "Transition call end");
@@ -1176,8 +1428,7 @@ void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg
 void CBFNavQuad::VisualizeFrontierCall(
     const cv::Mat &free_map,
     const cv::Mat &occupied_map,
-    const std::shared_ptr<cbf_circ_interfaces::srv::FindFrontierPoints::Response>
-        frontier)
+    const FindFrontierPointResult& frontier)
 {
     cv::Mat visual;
     cv::Mat zero_image(free_map.rows, free_map.cols, CV_8UC1, cv::Scalar(0));
@@ -1191,18 +1442,18 @@ void CBFNavQuad::VisualizeFrontierCall(
     cv::Scalar cluster_color(255, 0, 255);
     size_t previous_cluster_id = 0;
 
-    for (size_t i = 0; i < frontier->frontiers.size(); ++i)
+    for (size_t i = 0; i < frontier.frontiers.size(); ++i)
     {
         // Resample color for a new cluster
-        if (previous_cluster_id != frontier->cluster_id[i])
+        if (previous_cluster_id != frontier.cluster_id[i])
         {
             cluster_color = cv::Scalar(sample_255(rng), sample_255(rng), sample_255(rng));
         }
 
-        cv::Point pt(frontier->frontiers[i].x, frontier->frontiers[i].y);
+        cv::Point pt(frontier.frontiers[i].x, frontier.frontiers[i].y);
         cv::circle(visual, pt, 0, cluster_color, 1);
 
-        previous_cluster_id = frontier->cluster_id[i];
+        previous_cluster_id = frontier.cluster_id[i];
     }
 
     // Correct the direction for better visualization
@@ -1287,16 +1538,17 @@ void CBFNavQuad::debug_Store(int counter)
     dfd.gradSafetyOrientation = Global::gradSafetyOrientation;
     dfd.witnessDistance = Global::witnessDistance;
     dfd.currentLidarPoints = getLidarPointsSource(getRobotPose().position, Global::param.updateKDTreepRadius);
-    Global::mutexUpdateKDTree.lock_shared();
-    dfd.currentLidarPointsKDTree = getLidarPointsKDTree(getRobotPose().position, Global::param.updateKDTreepRadius);
-    Global::mutexUpdateKDTree.unlock_shared();
+    // Global::mutexUpdateKDTree.lock_shared();
+    // dfd.currentLidarPointsKDTree = getLidarPointsKDTree(getRobotPose().position, Global::param.updateKDTreepRadius);
+    // Global::mutexUpdateKDTree.unlock_shared();
+    dfd.currentLidarPointsKDTree = {};
     dfd.currentGoalPosition = Global::currentGoalPosition;
     dfd.generateManyPathResult = Global::generateManyPathResult;
     dfd.currentOmega = Global::currentOmega;
     dfd.planningState = Global::planningState;
     dfd.graph = Global::graph;
     dfd.pointsKDTree = Global::pointsKDTree;
-    dfd.pointsFrontier = getFrontierPoints();
+    dfd.pointsFrontier = Global::frontierPoints;
     dfd.currentPath = Global::currentPath;
     dfd.currentIndexPath = Global::currentIndexPath;
     dfd.explorationPosition = Global::explorationPosition;

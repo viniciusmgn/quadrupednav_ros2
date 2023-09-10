@@ -77,4 +77,5 @@ namespace CBFCirc
     string getMatrixName(Matrix3d omega);
     int getMatrixNumber(Matrix3d omega);
     VectorXd vec3d(double x, double y, double z);
+    vector<VectorXd> readCSV(string filePath, int dim);
 }

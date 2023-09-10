@@ -11,7 +11,6 @@
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
 
-
 using namespace std;
 using namespace Eigen;
 using namespace std::chrono;
@@ -135,6 +134,28 @@ namespace CBFCirc
         return d;
     }
 
+    double estimateDistance(VectorXd startPosition, VectorXd endPosition, MapQuerier querier, Parameters param)
+    {
+
+        double separationDist = 0.25;
+        double length = (endPosition - startPosition).norm();
+        int N = ceil(length / separationDist);
+
+        vector<RobotPose> path;
+        for (int i = 0; i < N; i++)
+        {
+            RobotPose pose;
+            pose.position = startPosition + (i * separationDist) * (endPosition - startPosition).normalized();
+            pose.orientation = 0;
+            path.push_back(pose);
+        }
+
+        if( pathFree(path, querier, 0, path.size()-1, param.distPathFreeGraph, param) )
+            return length;
+        else
+            return length + VERYBIGNUMBER;
+    }
+
     NewExplorationPointResult Graph::getNewExplorationPoint(RobotPose pose, MapQuerier querier, vector<vector<VectorXd>> frontier, Parameters param, rclcpp::Logger logger)
     {
 
@@ -161,13 +182,13 @@ namespace CBFCirc
                                     param.plannerReachError, param.deltaTimeSampleExploration, param)
                         .atLeastOnePathReached;
 
-            RCLCPP_INFO_STREAM(logger, "Tried to go to node "<<closestNodeToPosition->id<<": "<<found);
+            RCLCPP_INFO_STREAM(logger, "Tried to go to node " << closestNodeToPosition->id << ": " << found);
 
             triedAll = k >= closestNodesToCurrent.size();
         } while (!found && !triedAll);
         auto stop = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(stop - start);
-        RCLCPP_INFO_STREAM(logger, "Finished in "<<((double) duration.count()/1000000.0)<<" seconds!");
+        RCLCPP_INFO_STREAM(logger, "Finished in " << ((double)duration.count() / 1000000.0) << " seconds!");
 
         if (!found)
         {
@@ -176,10 +197,9 @@ namespace CBFCirc
         }
         else
         {
-            RCLCPP_INFO_STREAM(logger, "Success to go to a point of the graph ("<<k<<" out of "<<closestNodesToCurrent.size()<<")");
+            RCLCPP_INFO_STREAM(logger, "Success to go to a point of the graph (" << k << " out of " << closestNodesToCurrent.size() << ")");
             sntr.success = true;
         }
-            
 
         RCLCPP_INFO_STREAM(logger, "Starting frontier exploration (Type A)..." << frontier.size() << " clusters found");
 
@@ -187,7 +207,7 @@ namespace CBFCirc
         {
             for (int i = 0; i < frontier.size(); i++)
             {
-                RCLCPP_INFO_STREAM(logger, "Computing for frontier point: "<<i);
+                RCLCPP_INFO_STREAM(logger, "Computing for frontier point: " << i);
 
                 ExplorationPointDebugResult expd;
 
@@ -214,27 +234,54 @@ namespace CBFCirc
                     vector<GraphNode *> closestNodesToBestPointUns = getNearestNodeList(bestPoint);
                     vector<double> distToNode;
 
-                    for(int k=0; k < closestNodesToBestPointUns.size(); k++)
+                    //string grademsg = "";
+
+                    for (int k = 0; k < closestNodesToBestPointUns.size(); k++)
                     {
-                        double dist1 = (closestNodeToPosition->position - pose.position).norm();
+                        // double dist1 = (closestNodeToPosition->position - pose.position).norm();
+
+                        // vector<GraphEdge* > path = getPath(closestNodeToPosition, closestNodesToBestPointUns[k]);
                         double dist2 = computeDistPath(getPath(closestNodeToPosition, closestNodesToBestPointUns[k]));
-                        double dist3 = (closestNodesToBestPointUns[k]->position - bestPoint).norm();
-                        distToNode.push_back(dist1 + dist2 + dist3);
+                        //double dist3 = (closestNodesToBestPointUns[k]->position - bestPoint).norm();
+                        double dist3 = estimateDistance(closestNodesToBestPointUns[k]->position, bestPoint, querier, param);
+                        distToNode.push_back(dist2 + dist3);
+
+                        //grademsg = "N" + std::to_string(closestNodesToBestPointUns[k]->id) + ": d2: " + std::to_string(dist2) + " d3: " + std::to_string(dist3);
+                        //RCLCPP_INFO_STREAM(logger, grademsg);
                     }
 
                     vector<int> ind = sortGiveIndex(distToNode);
 
-                    for(int k=0; k < closestNodesToBestPointUns.size(); k++)
+                    for (int k = 0; k < closestNodesToBestPointUns.size(); k++)
                         closestNodesToBestPoint.push_back(closestNodesToBestPointUns[ind[k]]);
 
+                    //Heuristic: push the closest node as well to the start of the queue, if not pushed
+                    int jmax = (closestNodesToBestPoint.size() < param.noTriesClosestPoint) ? closestNodesToBestPoint.size() : param.noTriesClosestPoint;
+
+                    bool closestPushed=false;
+                    for(int k=0; k < jmax; k++)
+                        closestPushed = closestPushed || (closestNodesToBestPoint[k]->id == closestNodesToBestPointUns[0]->id);
+                    
+                    if(!closestPushed)
+                    {
+                        closestNodesToBestPoint.insert(closestNodesToBestPoint.begin(), closestNodesToBestPointUns[0]);
+                        //RCLCPP_INFO_STREAM(logger, "Pushed closest!");
+                    }
+                        
+
+                    //
 
                     GraphNode *bestNodeToExploration;
                     double bestValue = VERYBIGNUMBER;
                     Matrix3d bestOmega;
-                    int jmax = (closestNodesToBestPoint.size() < param.noTriesClosestPoint) ? closestNodesToBestPoint.size() : param.noTriesClosestPoint;
+                    //int jmax = (closestNodesToBestPoint.size() < param.noTriesClosestPoint) ? closestNodesToBestPoint.size() : param.noTriesClosestPoint;
                     bool cont = true;
-                    int j =0;
-                    while(cont)
+                    int j = 0;
+
+                    string strNodeTry = "";
+                    string finalPoint = "";
+
+                    while (cont)
                     {
                         GraphNode *nodeTry = closestNodesToBestPoint[j];
                         RobotPose poseTry;
@@ -249,11 +296,18 @@ namespace CBFCirc
                             bestOmega = gmpr1.bestOmega;
                             bestNodeToExploration = nodeTry;
                         }
+
+
+                        strNodeTry += std::to_string(closestNodesToBestPoint[j]->id) + "-";
+                        //VectorXd lastPoint = gmpr1.bestPath.path[gmpr1.bestPath.path.size() - 1].position;
+                        //finalPoint += "(" + std::to_string(lastPoint[0]) + "," + std::to_string(lastPoint[1]) + "),";
+
                         j++;
-                        cont = cont && (j<jmax);
+                        cont = cont && (j < jmax);
                     }
 
-                    
+                    RCLCPP_INFO_STREAM(logger, "Tried nodes with ids " << strNodeTry);
+                    //RCLCPP_INFO_STREAM(logger, "Final points " << finalPoint);
 
                     if (bestValue < VERYBIGNUMBER / 2)
                     {
@@ -261,7 +315,7 @@ namespace CBFCirc
                         poseBestPoint.position = bestPoint;
                         poseBestPoint.orientation = 0;
                         GenerateManyPathsResult gmpr2 = CBFCircPlanMany(poseBestPoint, param.globalTargetPosition, querier,
-                                                                        param.maxTimeSampleExploration, param.plannerReachError, 
+                                                                        param.maxTimeSampleExploration, param.plannerReachError,
                                                                         param.deltaTimeSampleExploration, param);
 
                         double dist1 = (closestNodeToPosition->position - pose.position).norm();
@@ -274,20 +328,18 @@ namespace CBFCirc
                         expd.distGraphToExploration = dist3;
                         expd.distExplorationToTarget = dist4;
                         expd.bestNodeToExploration = bestNodeToExploration->position;
-                        expd.grade = 100*dist1 + 100*dist2 + 100*dist3 + dist4;
-                        
+                        expd.grade = 100 * dist1 + 100 * dist2 + 100 * dist3 + dist4;
 
                         pointUnsorted.push_back(bestPoint);
-                        valueUnsorted.push_back(100*dist1 + 100*dist2 + 100*dist3 + dist4);
+                        valueUnsorted.push_back(100 * dist1 + 100 * dist2 + 100 * dist3 + dist4);
                         indexGraphUnsorted.push_back(bestNodeToExploration->id);
                         omegaUnsorted.push_back(bestOmega);
                     }
                 }
                 else
-                    RCLCPP_INFO_STREAM(logger, "Point "<<i<<" skipped!");
+                    RCLCPP_INFO_STREAM(logger, "Point " << i << " skipped!");
 
                 sntr.explorationPointDebugResult.push_back(expd);
-
             }
 
             sntr.value = {};
@@ -304,13 +356,11 @@ namespace CBFCirc
                     sntr.index.push_back(indexGraphUnsorted[ind[i]]);
                 }
 
-
-                //sntr.indexClosestNode = sntr.index[0];
+                // sntr.indexClosestNode = sntr.index[0];
                 sntr.bestExplorationPosition = sntr.points[0];
                 sntr.pathToExplorationPoint = getPath(closestNodeToPosition, this->nodes[sntr.index[0]]);
                 sntr.bestOmega = omegaUnsorted[sntr.index[0]];
                 sntr.success = true;
-
 
                 RCLCPP_INFO_STREAM(logger, "SUCCESS: Point found!");
             }

@@ -46,9 +46,9 @@ namespace CBFCirc
 
     struct ExplorationPointDebugResult
     {
-        VectorXd point;
-        VectorXd selectedPointGraph;
-        VectorXd bestNodeToExploration;
+        VectorXd point = vec3d(0,0,0);
+        VectorXd selectedPointGraph = vec3d(0,0,0);
+        VectorXd bestNodeToExploration = vec3d(0,0,0);
         double distToObstacle = VERYBIGNUMBER;
         double distPointToGraph = VERYBIGNUMBER;
         double distAlongGraph = VERYBIGNUMBER;

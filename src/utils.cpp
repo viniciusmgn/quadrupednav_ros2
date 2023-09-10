@@ -300,8 +300,6 @@ namespace CBFCirc
         return false;
     }
 
-
-
     vector<int> sortGiveIndex(vector<double> v)
     {
         vector<int> idx(v.size());
@@ -437,9 +435,7 @@ namespace CBFCirc
         VectorXd vb = VectorXd::Zero(3);
         vb << point[0], 0, 0;
 
-        sr.gradSafety = 2*(A * va + B * vb) / (A + B);
-
-
+        sr.gradSafety = 2 * (A * va + B * vb) / (A + B);
 
         return sr;
     }
@@ -461,8 +457,6 @@ namespace CBFCirc
 
         return D;
     }
-
-
 
     double computeMeanCurv(vector<VectorXd> q, int sampfac, int start, int end)
     {
@@ -488,21 +482,21 @@ namespace CBFCirc
 
     string getMatrixName(Matrix3d omega)
     {
-        if(abs(omega(1, 0)-1) <= VERYSMALLNUMBER)
+        if (abs(omega(1, 0) - 1) <= VERYSMALLNUMBER)
             return "PZ";
-        if(abs(omega(1, 0)+1) <= VERYSMALLNUMBER)
-            return "NZ";   
-        if(abs(omega(1, 0)) + abs(omega(2, 1)) + abs(omega(0, 2)) <= VERYSMALLNUMBER)
-            return "0";             
+        if (abs(omega(1, 0) + 1) <= VERYSMALLNUMBER)
+            return "NZ";
+        if (abs(omega(1, 0)) + abs(omega(2, 1)) + abs(omega(0, 2)) <= VERYSMALLNUMBER)
+            return "0";
     }
     int getMatrixNumber(Matrix3d omega)
     {
-        if(abs(omega(1, 0)-1) <= VERYSMALLNUMBER)
+        if (abs(omega(1, 0) - 1) <= VERYSMALLNUMBER)
             return 2;
-        if(abs(omega(1, 0)+1) <= VERYSMALLNUMBER)
-            return -2;   
-        if(abs(omega(1, 0)) + abs(omega(2, 1)) + abs(omega(0, 2)) <= VERYSMALLNUMBER)
-            return 0;             
+        if (abs(omega(1, 0) + 1) <= VERYSMALLNUMBER)
+            return -2;
+        if (abs(omega(1, 0)) + abs(omega(2, 1)) + abs(omega(0, 2)) <= VERYSMALLNUMBER)
+            return 0;
     }
 
     VectorXd vec3d(double x, double y, double z)
@@ -515,9 +509,42 @@ namespace CBFCirc
     vector<VectorXd> deepCopy(vector<VectorXd> vec)
     {
         vector<VectorXd> copy;
-        for(int i=0; i < vec.size(); i++)
+        for (int i = 0; i < vec.size(); i++)
             copy.push_back(vec[i]);
 
         return copy;
+    }
+
+    vector<VectorXd> readCSV(string filePath, int dim)
+    {
+        ifstream file;
+        int num;
+        file.open(filePath);
+        vector<VectorXd> points = {};
+
+        string line;
+        //getline(file, line);
+
+        while (getline(file, line))
+        {
+            string vec = line.substr(0, line.length());
+            VectorXd v = VectorXd::Zero(dim);
+
+            int i = 0;
+            for (int j = 0; j < dim; j++)
+            {
+                string numv = "";
+                while (vec[i] != ',' && vec[i] != ';' && i < vec.length())
+                {
+                    numv += vec[i];
+                    i++;
+                }
+                v[j] = std::stod(numv);
+                i++;
+            }
+            points.push_back(v);
+        }
+
+        return points;
     }
 }
