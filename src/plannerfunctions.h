@@ -54,7 +54,7 @@ namespace CBFCirc
         double maxTimePlanConnectNode = 100; //50
         double acceptableMinDist=2.5;
 
-        double minDistFilterKDTree = 0.15; // 0.3
+        double minDistFilterKDTree = 0.10; // 0.3 0.15
 
         int sampleFactorStorePath = 15;
         int sampleFactorLidarSource = 15; //5
@@ -84,8 +84,9 @@ namespace CBFCirc
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
         //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
-        //VectorXd globalTargetPosition = vec3d(20.0, 32.0, 0.0);
-        VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(20.0, 32.0, 0.0);
+        //VectorXd globalTargetPosition = vec3d(5, 0, 0.0);
+        //VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
         //VectorXd globalTargetPosition = vec3d(6.0, 0.0, 0.0);
 
         double distanceMarginLowLevel = 0.10; // 0.20 0.15 0.25

@@ -224,9 +224,9 @@ void CBFNavQuad::storeData()
         {
             if (Global::storeCounter % 4 == 0)
             {
-                Global::mutexFrontierPoints.lock();
-                Global::frontierPoints = getFrontierPoints();
-                Global::mutexFrontierPoints.unlock();
+                // Global::mutexFrontierPoints.lock();
+                // Global::frontierPoints = getFrontierPoints();
+                // Global::mutexFrontierPoints.unlock();
             }
 
             debug_Store(Global::generalCounter);
@@ -256,7 +256,7 @@ void CBFNavQuad::wholeAlgorithm()
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
                 {
-                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver79)------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver85)------");
                 }
                 if (Global::planningState == MotionPlanningState::pathToExploration)
                 {
@@ -461,6 +461,29 @@ void CBFNavQuad::setLinearVelocity(VectorXd linearVelocity)
 
 vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
 {
+    vector<vector<VectorXd>> frontierPoints = getFrontierPointsHeight(Global::measuredHeight);
+
+    if (frontierPoints.size() == 0)
+    {
+        frontierPoints = getFrontierPointsHeight(Global::measuredHeight - 0.2);
+        if (frontierPoints.size() == 0)
+        {
+            frontierPoints = getFrontierPointsHeight(Global::measuredHeight + 0.2);
+
+            if (frontierPoints.size() == 0)
+                RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Tried everything... was not able to get frontier points.");
+
+            return frontierPoints;
+        }
+        else
+            return frontierPoints;
+    }
+    else
+        return frontierPoints;
+}
+
+vector<vector<VectorXd>> CBFNavQuad::getFrontierPointsHeight(double height)
+{
     vector<vector<VectorXd>> frontierPoints;
 
     // Cannot proceed without a map
@@ -470,8 +493,8 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
         return frontierPoints;
     }
 
-    double rz_min = Global::measuredHeight - 0.2;
-    double rz_max = Global::measuredHeight + 0.2;
+    double rz_min = height - 0.2;
+    double rz_max = height + 0.2;
 
     // Pixelize, with 2px buffer for boundary points
     double x_max, y_max, z_max, x_min, y_min, z_min;
@@ -767,7 +790,7 @@ void CBFNavQuad::lowLevelMovement()
                 // multiplicative_factor = min(max(1.4*(cccr.distanceResult.distance-0.05)/(1.0-0.05),0.0),1.4);
 
                 setTwist(multiplicative_factor * cccr.linearVelocity, multiplicative_factor * cccr.angularVelocity);
-                
+
                 // setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
 
                 // Refresh some variables
@@ -783,8 +806,6 @@ void CBFNavQuad::lowLevelMovement()
                 // Global::gradSafetyPosition = vec3d(0,0,0);
                 // Global::gradSafetyOrientation = 0;
                 // Global::witnessDistance = vec3d(0,0,0);
-
-
             }
             else
             {
@@ -900,7 +921,6 @@ void CBFNavQuad::replanCommitedPathCall()
         Global::mutexFrontierPoints.lock();
         frontierPoints = getFrontierPoints();
         Global::mutexFrontierPoints.unlock();
-
 
         while (frontierPoints.size() == 0)
         {
@@ -1177,7 +1197,7 @@ void CBFNavQuad::updateKDTreeCall(bool forceRemove)
                 cont = (j < pointsFromLidar.size()) && (minDist > pow(0.1, 2));
             }
 
-            if (minDist > pow(0.1, 2))
+            if (minDist > pow(0.2, 2)) // 0.1
             {
                 pointsToRemove.push_back(pointsFromKDaround[i]);
                 debug_pointsRemoved++;
@@ -1325,6 +1345,13 @@ void CBFNavQuad::transitionAlg()
             {
                 Global::planningState = MotionPlanningState::success;
                 Global::continueAlgorithm = false;
+
+                RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Good!");
+
+                cout << "Started printing data" << std::endl;
+                ofstream file;
+                CBFNavQuad::debug_printAlgStateToMatlab(&file);
+                cout << "Debug data printed!" << std::endl;
 
                 // DEBUG
                 debug_addMessage(Global::generalCounter, "Success!");
@@ -2172,6 +2199,8 @@ int main(int argc, char *argv[])
         CBFNavQuad::debug_printAlgStateToMatlab(&file);
         cout << "Debug data printed!" << std::endl;
     }
+
+    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Outside loop");
 
     sleep(20);
 

@@ -169,6 +169,7 @@ public:
     void setTwist(VectorXd linearVelocity, double angularVelocity);
     void setLinearVelocity(VectorXd linearVelocity);
     vector<vector<VectorXd>> getFrontierPoints();
+    vector<vector<VectorXd>> getFrontierPointsHeight(double height);
     vector<VectorXd> getLidarPointsSource(VectorXd position, double radius);
     vector<VectorXd> getLidarPointsKDTree(VectorXd position, double radius);
     void lowLevelMovement();
