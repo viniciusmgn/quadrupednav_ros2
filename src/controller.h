@@ -76,6 +76,7 @@ public:
     VectorXd explorationPosition;
     vector<RobotPose> commitedPath;
     NewExplorationPointResult explorationResult;
+    double height;
 };
 
 class Global
@@ -109,6 +110,7 @@ public:
     inline static shared_timed_mutex mutexUpdateKDTree;
     inline static mutex mutexReplanCommitedPath;
     inline static mutex mutexUpdateGraph;
+    inline static mutex mutexFrontierPoints;
     inline static shared_timed_mutex mutexGetLidarPoints;
 
     inline static vector<DataForDebug> dataForDebug = {};

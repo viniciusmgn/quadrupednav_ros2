@@ -596,10 +596,10 @@ namespace CBFCirc
         VectorXd b = VectorXd::Zero(1);
 
         double cbfConst;
-        if (dr.distance - param.distanceMarginPlan > 0)
-            cbfConst = -0.5 * param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
+        if (dr.distance - param.distanceMarginLowLevel > 0)
+            cbfConst = -0.25 * param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
         else
-            cbfConst = -param.alphaCBFNegative * (dr.distance - param.distanceMarginLowLevel);
+            cbfConst = -0.15 * param.alphaCBFNegative * (dr.distance - param.distanceMarginLowLevel);
 
         b << cbfConst;
 

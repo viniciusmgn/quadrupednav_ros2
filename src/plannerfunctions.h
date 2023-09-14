@@ -66,11 +66,11 @@ namespace CBFCirc
         double upsampleMinPos = 0.01; //0.01
         double upsampleMinOri = 0.01; //0.01
         double vectorFieldAlpha = 2.0;
-        double distCutoffCorrect = 0.6;
+        double distCutoffCorrect = 1.0;
         int generateSimplePathDiv = 100;
         
-        double distPathFreePlan = 0.15;
-        int noIterationsCorrectPath = 6; //7
+        double distPathFreePlan = 0.30; //0.15
+        int noIterationsCorrectPath = 8; //7
         double correctPathStep = 0.3; //0.15 //0.3
         int filterWindow = 10;
 
@@ -84,10 +84,11 @@ namespace CBFCirc
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
         //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
-        VectorXd globalTargetPosition = vec3d(-20.0, -10.0, 0.0);
+        //VectorXd globalTargetPosition = vec3d(20.0, 32.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
         //VectorXd globalTargetPosition = vec3d(6.0, 0.0, 0.0);
 
-        double distanceMarginLowLevel = 0.15; // 0.20
+        double distanceMarginLowLevel = 0.10; // 0.20 0.15 0.25
     };
 
     struct DistanceResult

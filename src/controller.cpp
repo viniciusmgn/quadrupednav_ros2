@@ -52,8 +52,8 @@ using namespace CBFCirc;
 using std::placeholders::_1;
 using namespace boost;
 
-std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-//std::string debugging_folder = "/ros_ws/cbf_debugging";
+// std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
+std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -66,7 +66,7 @@ CBFNavQuad::CBFNavQuad()
     subEnd = this->create_subscription<std_msgs::msg::Int16>(
         "endProgram", 10, std::bind(&CBFNavQuad::endCallback, this, _1));
 
-    this->declare_parameter("frontier_height_range", 0.2);
+    this->declare_parameter("frontier_height_range", 0.10); // 0.2
     this->declare_parameter("main_loop_interval_ms", 10);
     this->declare_parameter("low_level_movement_loop_sleep_ms", 10);
     this->declare_parameter("replanning_loop_sleep_ms", 1500);
@@ -98,7 +98,7 @@ CBFNavQuad::CBFNavQuad()
     Global::graph.addNode(startingPosition);
 
     // DEBUG TEST
-    //debugTest();
+    // debugTest();
     //
 
     // Initialize some threads
@@ -167,7 +167,7 @@ void CBFNavQuad::debugTest()
     RobotPose pose;
     vector<VectorXd> poseData = readCSV("/home/vinicius/Desktop/matlab/unitree_planning/debugTests/pose.csv", 4);
 
-    pose.position = vec3d(poseData[0][0],poseData[0][1],poseData[0][2]);
+    pose.position = vec3d(poseData[0][0], poseData[0][1], poseData[0][2]);
     pose.orientation = poseData[0][3];
 
     // NewExplorationPointResult nepr = Global::graph.getNewExplorationPoint(
@@ -175,8 +175,6 @@ void CBFNavQuad::debugTest()
     //     [this](VectorXd position, double radius)
     //     { return CBFNavQuad::getLidarPointsKDTree(position, radius); },
     //     explorationPointsVec, Global::param, this->get_logger());
-
-    
 
     GenerateManyPathsResult gmpr = CBFCircPlanMany(
         pose, Global::param.globalTargetPosition,
@@ -225,14 +223,16 @@ void CBFNavQuad::storeData()
         if (Global::measured && Global::firstPlanCreated && Global::planningState != MotionPlanningState::planning && Global::generalCounter > 10)
         {
             if (Global::storeCounter % 4 == 0)
+            {
+                Global::mutexFrontierPoints.lock();
                 Global::frontierPoints = getFrontierPoints();
+                Global::mutexFrontierPoints.unlock();
+            }
 
             debug_Store(Global::generalCounter);
 
             Global::storeCounter++;
         }
-
-        
 
         this_thread::sleep_for(std::chrono::milliseconds(1500));
     }
@@ -256,7 +256,7 @@ void CBFNavQuad::wholeAlgorithm()
             {
                 if (Global::planningState == MotionPlanningState::goingToGlobalGoal)
                 {
-                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver47)------");
+                    RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "-----GOING TO GLOBAL TARGET (ver79)------");
                 }
                 if (Global::planningState == MotionPlanningState::pathToExploration)
                 {
@@ -275,20 +275,20 @@ void CBFNavQuad::wholeAlgorithm()
             // if (Global::generalCounter % 1000 == 0)
             //     refreshWholeMapCall();
 
-            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update KD Tree");
+            // RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update KD Tree");
 
             if (Global::generalCounter % 50 == 0)
                 updateKDTreeCall();
 
-            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Replan commited path");
+            // RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Replan commited path");
 
-            if (Global::generalCounter % 300 == 0 || Global::asynchronousPlan) //150 500
+            if (Global::generalCounter % 300 == 0 || Global::asynchronousPlan) // 150 500
             {
                 Global::asynchronousPlan = false;
                 replanCommitedPathCall();
             }
 
-            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update Graph Call");
+            // RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Update Graph Call");
 
             if (Global::generalCounter % 250 == 0)
                 updateGraphCall();
@@ -336,7 +336,8 @@ void CBFNavQuad::updatePose()
     try
     {
         geometry_msgs::msg::TransformStamped t;
-        t = tfBuffer->lookupTransform("B1_154/odom_fast_lio", "B1_154/imu_link", tf2::TimePointZero);
+        // t = tfBuffer->lookupTransform("B1_154/odom_fast_lio", "B1_154/imu_link", tf2::TimePointZero);
+        t = tfBuffer->lookupTransform("B1_154/odom_kiss_icp", "B1_154/base_link", tf2::TimePointZero);
 
         double px = t.transform.translation.x;
         double py = t.transform.translation.y;
@@ -537,104 +538,111 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
         //                                             << " ms");
     }
 
-    // DEBUG Visualize before post-processing
-    //VisualizeFrontierCall(free_map, occupied_map, ffpr);
-
-    // Post-processing to convert points into real coordinates
-    for (size_t i = 0; i < ffpr.frontiers.size(); ++i)
+    if (ffpr.frontiers.size() > 0)
     {
-        ffpr.frontiers[i].x = ffpr.frontiers[i].x * map_resolution + x_min;
-        ffpr.frontiers[i].y = ffpr.frontiers[i].y * map_resolution + y_min;
-    }
+        // DEBUG Visualize before post-processing
+        // VisualizeFrontierCall(free_map, occupied_map, ffpr);
 
-    // Process the information
-    int idMax = 0;
-    int idMin = 1000;
-    for (int i = 0; i < ffpr.cluster_id.size(); i++)
-    {
-        idMax = ffpr.cluster_id[i] > idMax ? ffpr.cluster_id[i] : idMax;
-        idMin = ffpr.cluster_id[i] < idMin ? ffpr.cluster_id[i] : idMin;
-    }
-
-    for (int i = 0; i <= idMax - idMin; i++)
-    {
-        vector<VectorXd> points = {};
-        frontierPoints.push_back(points);
-    }
-
-    for (int i = 0; i < ffpr.frontiers.size(); i++)
-    {
-        VectorXd newPoint = VectorXd::Zero(3);
-        newPoint << ffpr.frontiers[i].x, ffpr.frontiers[i].y, Global::param.constantHeight;
-        frontierPoints[ffpr.cluster_id[i] - idMin].push_back(newPoint);
-    }
-
-    // Filter frontier points
-    vector<vector<VectorXd>> frontierPointsFiltered = {};
-    Global::mutexUpdateKDTree.lock_shared();
-    for (int i = 0; i < frontierPoints.size(); i++)
-    {
-        double maxDist = 0;
-        for (int j = 0; j < frontierPoints[i].size(); j++)
+        // Post-processing to convert points into real coordinates
+        for (size_t i = 0; i < ffpr.frontiers.size(); ++i)
         {
-            vector<VectorXd> points = getLidarPointsKDTree(frontierPoints[i][j], Global::param.sensingRadius);
-            double dist = VERYBIGNUMBER;
-            for (int k = 0; k < points.size(); k++)
-                dist = min(dist, (points[k] - frontierPoints[i][j]).norm());
-
-            maxDist = max(maxDist, dist);
-        }
-        if (maxDist > max(Global::param.boundingRadius, Global::param.boundingHeight / 2))
-            frontierPointsFiltered.push_back(frontierPoints[i]);
-    }
-
-    // Group points
-    vector<VectorXd> centerPoint = {};
-    for (int i = 0; i < frontierPointsFiltered.size(); i++)
-    {
-        VectorXd center = vec3d(0, 0, 0);
-        for (int j = 0; j < frontierPointsFiltered[i].size(); j++)
-            center += frontierPointsFiltered[i][j];
-
-        center = center / ((double)frontierPointsFiltered[i].size());
-        centerPoint.push_back(center);
-    }
-
-    vector<vector<int>> groups = {{0}};
-    for (int i = 1; i < frontierPointsFiltered.size(); i++)
-    {
-        bool cont = true;
-        int j = -1;
-        double minDist;
-        while (cont)
-        {
-            j++;
-            minDist = VERYBIGNUMBER;
-            for (int k = 0; k < groups[j].size(); k++)
-                minDist = min(minDist, (centerPoint[i] - centerPoint[groups[j][k]]).norm());
-
-            cont = j + 1 < groups.size() && (minDist > Global::param.distGroupFrontierPoints);
+            ffpr.frontiers[i].x = ffpr.frontiers[i].x * map_resolution + x_min;
+            ffpr.frontiers[i].y = ffpr.frontiers[i].y * map_resolution + y_min;
         }
 
-        if (minDist <= Global::param.distGroupFrontierPoints)
-            groups[j].push_back(i);
-        else
-            groups.push_back({i});
+        // Process the information
+        int idMax = 0;
+        int idMin = 1000;
+        for (int i = 0; i < ffpr.cluster_id.size(); i++)
+        {
+            idMax = ffpr.cluster_id[i] > idMax ? ffpr.cluster_id[i] : idMax;
+            idMin = ffpr.cluster_id[i] < idMin ? ffpr.cluster_id[i] : idMin;
+        }
+
+        for (int i = 0; i <= idMax - idMin; i++)
+        {
+            vector<VectorXd> points = {};
+            frontierPoints.push_back(points);
+        }
+
+        for (int i = 0; i < ffpr.frontiers.size(); i++)
+        {
+            VectorXd newPoint = VectorXd::Zero(3);
+            newPoint << ffpr.frontiers[i].x, ffpr.frontiers[i].y, Global::param.constantHeight;
+            frontierPoints[ffpr.cluster_id[i] - idMin].push_back(newPoint);
+        }
+
+        // Filter frontier points
+        vector<vector<VectorXd>> frontierPointsFiltered = {};
+        Global::mutexUpdateKDTree.lock_shared();
+        for (int i = 0; i < frontierPoints.size(); i++)
+        {
+            double maxDist = 0;
+            for (int j = 0; j < frontierPoints[i].size(); j++)
+            {
+                vector<VectorXd> points = getLidarPointsKDTree(frontierPoints[i][j], Global::param.sensingRadius);
+                double dist = VERYBIGNUMBER;
+                for (int k = 0; k < points.size(); k++)
+                    dist = min(dist, (points[k] - frontierPoints[i][j]).norm());
+
+                maxDist = max(maxDist, dist);
+            }
+            if (maxDist > max(Global::param.boundingRadius, Global::param.boundingHeight / 2))
+                frontierPointsFiltered.push_back(frontierPoints[i]);
+        }
+
+        // Group points
+        vector<VectorXd> centerPoint = {};
+        for (int i = 0; i < frontierPointsFiltered.size(); i++)
+        {
+            VectorXd center = vec3d(0, 0, 0);
+            for (int j = 0; j < frontierPointsFiltered[i].size(); j++)
+                center += frontierPointsFiltered[i][j];
+
+            center = center / ((double)frontierPointsFiltered[i].size());
+            centerPoint.push_back(center);
+        }
+
+        vector<vector<int>> groups = {{0}};
+        for (int i = 1; i < frontierPointsFiltered.size(); i++)
+        {
+            bool cont = true;
+            int j = -1;
+            double minDist;
+            while (cont)
+            {
+                j++;
+                minDist = VERYBIGNUMBER;
+                for (int k = 0; k < groups[j].size(); k++)
+                    minDist = min(minDist, (centerPoint[i] - centerPoint[groups[j][k]]).norm());
+
+                cont = j + 1 < groups.size() && (minDist > Global::param.distGroupFrontierPoints);
+            }
+
+            if (minDist <= Global::param.distGroupFrontierPoints)
+                groups[j].push_back(i);
+            else
+                groups.push_back({i});
+        }
+
+        vector<vector<VectorXd>> frontierPointsGrouped = {};
+
+        for (int i = 0; i < groups.size(); i++)
+        {
+            frontierPointsGrouped.push_back({});
+            for (int j = 0; j < groups[i].size(); j++)
+                for (int k = 0; k < frontierPointsFiltered[groups[i][j]].size(); k++)
+                    frontierPointsGrouped[i].push_back(frontierPointsFiltered[groups[i][j]][k]);
+        }
+
+        Global::mutexUpdateKDTree.unlock_shared();
+        return frontierPointsGrouped;
+        // return frontierPoints;
     }
-
-    vector<vector<VectorXd>> frontierPointsGrouped = {};
-
-    for (int i = 0; i < groups.size(); i++)
+    else
     {
-        frontierPointsGrouped.push_back({});
-        for (int j = 0; j < groups[i].size(); j++)
-            for (int k = 0; k < frontierPointsFiltered[groups[i][j]].size(); k++)
-                frontierPointsGrouped[i].push_back(frontierPointsFiltered[groups[i][j]][k]);
+        return {};
     }
-
-    Global::mutexUpdateKDTree.unlock_shared();
-    return frontierPointsGrouped;
-    //return frontierPoints;
 }
 
 vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radius)
@@ -669,8 +677,8 @@ vector<VectorXd> CBFNavQuad::getLidarPointsSource(VectorXd position, double radi
             if ((k % fact == 0) && (it->getLogOdds() > 0))
             {
                 double x = it.getX(), y = it.getY(), z = it.getZ();
-                //if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
-                    points.push_back(vec3d(x, y, Global::param.constantHeight));
+                // if (z >= Global::measuredHeight - height_range && z <= Global::measuredHeight + height_range)
+                points.push_back(vec3d(x, y, Global::param.constantHeight));
             }
 
             if (it->getLogOdds() > 0)
@@ -740,11 +748,13 @@ void CBFNavQuad::lowLevelMovement()
     {
         if (Global::measured && Global::firstPlanCreated)
         {
-            //RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call start");
-            //RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Low level");
+            // RCLCPP_DEBUG(rclcpp::get_logger("low_level_logger"), "Low level call start");
+            // RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Low level");
 
             if (Global::planningState != MotionPlanningState::planning && Global::commitedPath.size() > 1)
             {
+                ////
+
                 vector<VectorXd> pointsLidar = getLidarPointsSource(getRobotPose().position, Global::param.sensingRadius);
 
                 VectorFieldResult vfr = vectorField(getRobotPose(), Global::commitedPath, Global::param);
@@ -752,11 +762,12 @@ void CBFNavQuad::lowLevelMovement()
                                                          pointsLidar, Global::param);
 
                 // Send the twist
-                double multiplicative_factor = 1.3;
+                double multiplicative_factor = 1.5;
 
                 // multiplicative_factor = min(max(1.4*(cccr.distanceResult.distance-0.05)/(1.0-0.05),0.0),1.4);
 
                 setTwist(multiplicative_factor * cccr.linearVelocity, multiplicative_factor * cccr.angularVelocity);
+                
                 // setTwist(1.2 * cccr.linearVelocity, 1.2 * cccr.angularVelocity);
 
                 // Refresh some variables
@@ -765,6 +776,15 @@ void CBFNavQuad::lowLevelMovement()
                 Global::gradSafetyPosition = cccr.distanceResult.gradSafetyPosition;
                 Global::gradSafetyOrientation = cccr.distanceResult.gradSafetyOrientation;
                 Global::witnessDistance = cccr.distanceResult.witnessDistance;
+
+                //
+                // Global::distance = 0;
+                // Global::safety = 0;
+                // Global::gradSafetyPosition = vec3d(0,0,0);
+                // Global::gradSafetyOrientation = 0;
+                // Global::witnessDistance = vec3d(0,0,0);
+
+
             }
             else
             {
@@ -780,9 +800,9 @@ void CBFNavQuad::lowLevelMovement()
 void CBFNavQuad::replanCommitedPathCall()
 {
 
-    //Global::mutexReplanCommitedPath.lock();
+    // Global::mutexReplanCommitedPath.lock();
     updateKDTreeCall();
-    //Global::mutexUpdateKDTree.lock_shared();
+    // Global::mutexUpdateKDTree.lock_shared();
 
     // DEBUG
     int counter = Global::generalCounter;
@@ -869,18 +889,27 @@ void CBFNavQuad::replanCommitedPathCall()
         Global::planningState = MotionPlanningState::planning;
         vector<vector<VectorXd>> frontierPoints;
 
-        for (int i = 0; i < 3; i++)
-        {
-            frontierPoints = getFrontierPoints();
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-
-        // while (frontierPoints.size() == 0)
+        // for (int i = 0; i < 3; i++)
         // {
-        //     //RCLCPP_INFO_STREAM(this->get_logger(), "No frontier points found... trying again...");
-        //     std::this_thread::sleep_for(std::chrono::seconds(1));
+        //     Global::mutexFrontierPoints.lock();
         //     frontierPoints = getFrontierPoints();
+        //     Global::mutexFrontierPoints.unlock();
+        //     std::this_thread::sleep_for(std::chrono::seconds(1));
         // }
+
+        Global::mutexFrontierPoints.lock();
+        frontierPoints = getFrontierPoints();
+        Global::mutexFrontierPoints.unlock();
+
+
+        while (frontierPoints.size() == 0)
+        {
+            RCLCPP_INFO_STREAM(this->get_logger(), "No frontier points found... trying again...");
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            Global::mutexFrontierPoints.lock();
+            frontierPoints = getFrontierPoints();
+            Global::mutexFrontierPoints.unlock();
+        }
 
         RCLCPP_INFO_STREAM(this->get_logger(), "Start to update graph");
         updateGraphCall();
@@ -966,8 +995,8 @@ void CBFNavQuad::replanCommitedPathCall()
             cont = !nepr.success;
         }
     }
-    //Global::mutexUpdateKDTree.unlock_shared();
-    //Global::mutexReplanCommitedPath.unlock();
+    // Global::mutexUpdateKDTree.unlock_shared();
+    // Global::mutexReplanCommitedPath.unlock();
 }
 
 void CBFNavQuad::replanCommitedPath()
@@ -1130,7 +1159,7 @@ void CBFNavQuad::updateKDTreeCall(bool forceRemove)
     }
 
     // Check if some points should be removed
-    if (forceRemove || (Global::generalCounter % 50 == 0 && Global::generalCounter > 0)) //150
+    if (forceRemove || (Global::generalCounter % 50 == 0 && Global::generalCounter > 0)) // 150
     {
         vector<VectorXd> pointsFromKDaround = getLidarPointsKDTree(getRobotPose().position, Global::param.updateKDTreepRadius);
         vector<VectorXd> pointsToRemove;
@@ -1334,7 +1363,6 @@ void CBFNavQuad::transitionAlg()
                 else
                 {
 
-
                     Global::currentIndexPath++;
                     Global::currentGoalPosition = Global::currentPath[Global::currentIndexPath]->nodeIn->position;
                     Global::currentOmega = Global::currentPath[Global::currentIndexPath]->omega;
@@ -1428,7 +1456,7 @@ void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg
 void CBFNavQuad::VisualizeFrontierCall(
     const cv::Mat &free_map,
     const cv::Mat &occupied_map,
-    const FindFrontierPointResult& frontier)
+    const FindFrontierPointResult &frontier)
 {
     cv::Mat visual;
     cv::Mat zero_image(free_map.rows, free_map.cols, CV_8UC1, cv::Scalar(0));
@@ -1480,6 +1508,7 @@ FindFrontierPointResult CBFNavQuad::FindFrontierPoints(const cv::Mat &free_map, 
     if (boundary_points.size() == 0)
     {
         RCLCPP_WARN(this->get_logger(), "No frontier points found");
+        ffpr.frontiers = {};
         return ffpr;
     }
 
@@ -1554,6 +1583,7 @@ void CBFNavQuad::debug_Store(int counter)
     dfd.explorationPosition = Global::explorationPosition;
     dfd.commitedPath = Global::commitedPath;
     dfd.explorationResult = Global::explorationResult;
+    dfd.height = Global::measuredHeight;
 
     Global::dataForDebug.push_back(dfd);
 }
@@ -1605,6 +1635,7 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     *f << "generalCounter = load([dirData '/generalCounter.csv']);" << std::endl;
     *f << "position = load([dirData '/position.csv']);" << std::endl;
     *f << "orientation = load([dirData '/orientation.csv']);" << std::endl;
+    *f << "height = load([dirData '/height.csv']);" << std::endl;
     *f << "desLinVelocity = load([dirData '/desLinVelocity.csv']);" << std::endl;
     *f << "desAngVelocity = load([dirData '/desAngVelocity.csv']);" << std::endl;
     *f << "distance = load([dirData '/distance.csv']);" << std::endl;
@@ -1697,6 +1728,16 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     tempDouble = {};
     for (int i = 0; i < Global::dataForDebug.size(); i++)
         tempDouble.push_back((double)Global::dataForDebug[i].orientation);
+
+    printVectorsToCSV(f, tempDouble);
+    f->flush();
+    f->close();
+
+    // WRITE: height
+    f->open(debugging_folder + "/" + fname + "/height.csv", ofstream::trunc);
+    tempDouble = {};
+    for (int i = 0; i < Global::dataForDebug.size(); i++)
+        tempDouble.push_back((double)Global::dataForDebug[i].height);
 
     printVectorsToCSV(f, tempDouble);
     f->flush();
