@@ -107,9 +107,9 @@ namespace CBFCirc
 
         double cbfConst;
         if (dr.distance - param.distanceMarginPlan > 0)
-            cbfConst = -param.alphaCBFPositive * (dr.distance - param.distanceMarginPlan);
+            cbfConst = -param.alphaCBFPositivePlan * (dr.distance - param.distanceMarginPlan);
         else
-            cbfConst = -param.alphaCBFNegative * (dr.distance - param.distanceMarginPlan);
+            cbfConst = -param.alphaCBFNegativePlan * (dr.distance - param.distanceMarginPlan);
 
         b << cbfConst;
 
@@ -365,31 +365,6 @@ namespace CBFCirc
                 modifiedPath[i].orientation += fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
             }
             cpr.minDist = min(cpr.minDist, computeDist(querier(modifiedPath[i].position, param.sensingRadius), modifiedPath[i], param).distance);
-            // DistanceResult dr = computeDist(querier(modifiedPath[i].position, param.sensingRadius), modifiedPath[i], param);
-            // int j =0;
-            // bool cont=true;
-            // RobotPose candPose;
-
-            // do
-            // {
-            //     fat = sqrt(1.0 + VERYSMALLNUMBER - pathLength[i]) * max(0.0, 1.0 - dr.distance / param.distCutoffCorrect);
-
-            //     double norm = sqrt(dr.gradSafetyPosition.squaredNorm() + pow(dr.gradSafetyOrientation, 2)) + VERYSMALLNUMBER;
-            //     // modifiedPath[i].position += fat * param.correctPathStep * dr.gradSafetyPosition / norm;
-            //     // modifiedPath[i].orientation += fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
-
-            //     candPose.position = modifiedPath[i].position + fat * param.correctPathStep * dr.gradSafetyPosition / norm;
-            //     candPose.orientation = modifiedPath[i].orientation + fat * param.correctPathStep * dr.gradSafetyOrientation / norm;
-
-            //     DistanceResult drNew = computeDist(querier(candPose.position, param.sensingRadius), candPose, param);
-            //     j++;
-            //     cont = (j < param.noIterationsCorrectPath) && (drNew.distance > dr.distance);
-            //     if(drNew.distance > dr.distance)
-            //     {
-            //         modifiedPath[i] = candPose;
-            //         dr = drNew;
-            //     }
-            // }while(cont);
         }
 
         
@@ -404,9 +379,6 @@ namespace CBFCirc
         
         OptimizePathResult opr;
 
-
-
-
         // Correct path
         auto start = high_resolution_clock::now();
 
@@ -417,9 +389,6 @@ namespace CBFCirc
         auto stop = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(stop - start);
         opr.correctPathTime = (double)  duration.count()/E106;
-
-
-
 
         // Reduze size
         int indexPath = -1;
@@ -597,9 +566,9 @@ namespace CBFCirc
 
         double cbfConst;
         if (dr.distance - param.distanceMarginLowLevel > 0)
-            cbfConst = -0.25 * param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
+            cbfConst = -param.alphaCBFPositive * (dr.distance - param.distanceMarginLowLevel);
         else
-            cbfConst = -0.15 * param.alphaCBFNegative * (dr.distance - param.distanceMarginLowLevel);
+            cbfConst = -param.alphaCBFNegative * (dr.distance - param.distanceMarginLowLevel);
 
         b << cbfConst;
 

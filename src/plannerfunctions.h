@@ -28,8 +28,14 @@ namespace CBFCirc
 
         double gainRobotYaw = 4.0;         // 2.0 4.0
         double gainTargetController = 0.4; // 0.2
-        double alphaCBFPositive = 1.0;
-        double alphaCBFNegative = 6.0;   // 7.5 //6
+
+        double alphaCBFPositivePlan = 1.0;
+        double alphaCBFNegativePlan = 6.0;   // 7.5 //6
+
+        double alphaCBFPositive = 0.25;
+        double alphaCBFNegative = 0.90;   // 7.5 //6
+
+
         double distanceMinBeta = 0.10; // 0.5 0.3 0.4 0.50 0.30 0.15
         double maxVelCircBeta = 1.25;  // 0.5 0.5
         double maxTotalVel = 0.3;
@@ -41,6 +47,12 @@ namespace CBFCirc
         double plannerOmegaPlanReachError = 0.30; // 0.25
         double acceptableRationPlanning = 2.0;
         double acceptableRatioChangeCirc = 0.7;
+
+        double frontierHeightRange = 0.1;
+
+        double speedMultiplier = 1.5;
+        int sleepLowLevelControllerMs = 10;
+        int sleepTransitionAlgMs = 10;
 
         int freqStoreDebug = 15;
         int freqReplanPath = 1; // 500
@@ -61,6 +73,8 @@ namespace CBFCirc
 
         double minAcceptableNegativeDist = -0.35; //-0.35
 
+        double removePointKDTreeMinDist = 0.2;
+
 
         int noMaxOptimizePath = 10;
         double upsampleMinPos = 0.01; //0.01
@@ -76,6 +90,13 @@ namespace CBFCirc
 
         double distGroupFrontierPoints = 1.0;
 
+
+        int updateKDTreeStep = 50;
+        int replanCommitedPathStep = 300;
+        int updateGraphStep = 250;
+        int updateKDTreeRemoveStep = 50;
+
+
         double maxTimeSampleExploration = 80;
         double deltaTimeSampleExploration = 1.0; //0.5
         double minDistExploration = 0.8; //0.5
@@ -84,7 +105,7 @@ namespace CBFCirc
         //VectorXd globalTargetPosition = vec3d(7, 0, -0.1725); // vec3d(7, 0, -0.1725)
         //VectorXd globalTargetPosition = vec3d(-7, 1, -0.1725);
         //VectorXd globalTargetPosition = vec3d(13.0, -32.0, 0.0);
-        VectorXd globalTargetPosition = vec3d(20.0, 32.0, 0.0);
+        VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
         //VectorXd globalTargetPosition = vec3d(5, 0, 0.0);
         //VectorXd globalTargetPosition = vec3d(20.0, 0.0, 0.0);
         //VectorXd globalTargetPosition = vec3d(6.0, 0.0, 0.0);

@@ -163,7 +163,6 @@ public:
     void wholeAlgorithm();
     void endCallback(const std_msgs::msg::Int16::SharedPtr msg);
     void updatePose();
-    void mainFunction();
     double getTime();
     RobotPose getRobotPose();
     void setTwist(VectorXd linearVelocity, double angularVelocity);
@@ -174,13 +173,9 @@ public:
     vector<VectorXd> getLidarPointsKDTree(VectorXd position, double radius);
     void lowLevelMovement();
     void replanCommitedPathCall();
-    void replanCommitedPath();
     void updateGraphCall();
-    void updateGraph();
     void updateKDTreeCall(bool forceRemove = false);
-    void updateKDTree();
     void transitionAlg();
-    void transitionAlgCall();
     void refreshWholeMapCall();
 
     void debugTest();
