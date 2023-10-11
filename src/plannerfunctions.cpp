@@ -148,6 +148,20 @@ namespace CBFCirc
         return cccr;
     }
 
+    double deltaTimeModulation(double distance)
+    {
+        if (distance > 1.0)
+            return 4.0;
+        else if (distance > 0.5)
+            return 2.0;
+        else if (distance > 0.05)
+            return 1.0;
+        else if (distance > 0)
+            return 0.5;
+        else
+            return 0.5; //0.25
+    }
+
     GeneratePathResult CBFCircPlanOne(RobotPose startingPose, VectorXd targetPosition, MapQuerier querier, Matrix3d omega,
                                       double maxTime, double reachpointError, double deltaTime, Parameters param)
     {
@@ -178,15 +192,7 @@ namespace CBFCirc
                 gpr.pathGradSafetyOrientation.push_back(cccr.distanceResult.gradSafetyOrientation);
                 gpr.pathDistance.push_back(cccr.distanceResult.distance);
 
-                if (cccr.distanceResult.distance > 0.05)
-                    dt = deltaTime;
-                else
-                {
-                    if (cccr.distanceResult.distance > 0)
-                        dt = deltaTime / 2;
-                    else
-                        dt = deltaTime / 4;
-                }
+                dt = deltaTimeModulation(cccr.distanceResult.distance)*deltaTime;
 
                 pose.position += cccr.linearVelocity * dt;
                 pose.orientation += cccr.angularVelocity * dt;
@@ -310,28 +316,6 @@ namespace CBFCirc
         }
     }
 
-    vector<RobotPose> generateSimplePath(vector<RobotPose> originalPath, MapQuerier querier, int initialIndex, int finalIndex, Parameters param)
-    {
-        RobotPose startingPose = originalPath[initialIndex];
-        RobotPose endingPose = originalPath[finalIndex];
-        vector<RobotPose> simplePath = {};
-
-        int N = param.generateSimplePathDiv;
-        for (int i = 0; i < N; i++)
-        {
-            RobotPose intPose;
-            double fat = ((double)i) / ((double)(N - 1));
-            intPose.position = startingPose.position + (endingPose.position - startingPose.position) * fat;
-            intPose.orientation = startingPose.orientation + (endingPose.orientation - startingPose.orientation) * fat;
-            simplePath.push_back(intPose);
-        }
-
-        if (pathFree(simplePath, querier, 0, simplePath.size() - 1, param.distPathFreePlan, param))
-            return simplePath;
-        else
-            return {};
-    }
-
     CorrectPathResult correctPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
     {
         CorrectPathResult cpr;
@@ -367,45 +351,52 @@ namespace CBFCirc
             cpr.minDist = min(cpr.minDist, computeDist(querier(modifiedPath[i].position, param.sensingRadius), modifiedPath[i], param).distance);
         }
 
-        
         cpr.path = modifiedPath;
 
         return cpr;
     }
 
-    OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
+    vector<RobotPose> generateSimplePath(vector<RobotPose> originalPath, MapQuerier querier, int initialIndex, int finalIndex, Parameters param)
     {
+        RobotPose startingPose = originalPath[initialIndex];
+        RobotPose endingPose = originalPath[finalIndex];
+        vector<RobotPose> simplePath = {};
 
-        
-        OptimizePathResult opr;
+        int N = param.generateSimplePathDiv;
+        for (int i = 0; i < N; i++)
+        {
+            RobotPose intPose;
+            double fat = ((double)i) / ((double)(N - 1));
+            intPose.position = startingPose.position + (endingPose.position - startingPose.position) * fat;
+            intPose.orientation = startingPose.orientation + (endingPose.orientation - startingPose.orientation) * fat;
+            simplePath.push_back(intPose);
+        }
 
-        // Correct path
-        auto start = high_resolution_clock::now();
+        if (pathFree(simplePath, querier, 0, simplePath.size() - 1, param.distPathFreePlan, param))
+            return simplePath;
+        else
+            return {};
+    }
 
-        CorrectPathResult cpr  = correctPath(originalPath, querier, param);
-        vector<RobotPose> correctedPath = cpr.path;
-        opr.minDist = cpr.minDist;
+    SimplifyPathResult simplifyPath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
+    {
+        SimplifyPathResult spr;
+        spr.path = {};
 
-        auto stop = high_resolution_clock::now();
-        auto duration = duration_cast<microseconds>(stop - start);
-        opr.correctPathTime = (double)  duration.count()/E106;
-
-        // Reduze size
         int indexPath = -1;
-        int currentIndex = correctedPath.size() - 1;
+        int currentIndex = originalPath.size() - 1;
         int i = 0;
 
-        start = high_resolution_clock::now();
         vector<RobotPose> path = {};
 
-        while (indexPath != correctedPath.size() - 1 && i < param.noMaxOptimizePath)
+        while (indexPath != originalPath.size() - 1 && i < param.noMaxOptimizePath)
         {
-            vector<RobotPose> tryPath = generateSimplePath(correctedPath, querier, 0, currentIndex, param);
+            vector<RobotPose> tryPath = generateSimplePath(originalPath, querier, 0, currentIndex, param);
             if (tryPath.size() > 0)
             {
                 path = tryPath;
                 indexPath = currentIndex;
-                currentIndex = (correctedPath.size() - 1 + currentIndex) / 2;
+                currentIndex = (originalPath.size() - 1 + currentIndex) / 2;
             }
             else
                 currentIndex = currentIndex / 2;
@@ -416,64 +407,25 @@ namespace CBFCirc
         vector<RobotPose> simplifiedPath = {};
 
         for (int i = 0; i < path.size(); i++)
-            simplifiedPath.push_back(path[i]);
+            spr.path.push_back(path[i]);
 
-        for (int i = indexPath + 1; i < correctedPath.size(); i++)
-            simplifiedPath.push_back(correctedPath[i]);
+        for (int i = indexPath + 1; i < originalPath.size(); i++)
+            spr.path.push_back(originalPath[i]);
 
-        stop = high_resolution_clock::now();
-        duration = duration_cast<microseconds>(stop - start);
-        opr.simplifyTime = (double)  duration.count()/E106;   
-
-        // Upsample:
-        vector<RobotPose>  optimizedPath = upsample(simplifiedPath, param.upsampleMinPos, param.upsampleMinOri);
-
-        // Filter
-        start = high_resolution_clock::now();
-
-        vector<RobotPose> finalPath = {};
-
-        for (int i = 0; i < optimizedPath.size(); i++)
-        {
-            VectorXd pos = VectorXd::Zero(3);
-            double ori = 0;
-            int lasti = optimizedPath.size() - 1;
-            int jmin = i < param.filterWindow ? 0 : i - param.filterWindow;
-            int jmax = i > lasti - param.filterWindow ? lasti : i + param.filterWindow;
-            double N = (double)(jmax - jmin) + 1;
-            for (int j = jmin; j <= jmax; j++)
-            {
-                pos += optimizedPath[j].position;
-                ori += optimizedPath[j].orientation;
-            }
-            pos = pos / N;
-            ori = ori / N;
-
-            RobotPose pose;
-            pose.position = pos;
-            pose.orientation = ori;
-            finalPath.push_back(pose);
-        }
-
-        stop = high_resolution_clock::now();
-        duration = duration_cast<microseconds>(stop - start);
-        opr.filterTime = (double)  duration.count()/E106;
-
-        opr.path = finalPath;
-        return opr;
+        return spr;
     }
 
-    vector<RobotPose> upsample(vector<RobotPose> path, double minDistPos, double minDistOri)
+    vector<RobotPose> upsamplePath(vector<RobotPose> originalPath, Parameters param)
     {
         vector<RobotPose> upsampledPath = {};
 
-        for (int i = 0; i < path.size() - 1; i++)
+        for (int i = 0; i < originalPath.size() - 1; i++)
         {
-            VectorXd deltaPos = path[i + 1].position - path[i].position;
-            double deltaOri = path[i + 1].orientation - path[i].orientation;
-            int N = (int)max(deltaPos.norm() / minDistPos, abs(deltaOri) / minDistOri);
+            VectorXd deltaPos = originalPath[i + 1].position - originalPath[i].position;
+            double deltaOri = originalPath[i + 1].orientation - originalPath[i].orientation;
+            int N = (int)max(deltaPos.norm() / param.upsampleMinPos, abs(deltaOri) / param.upsampleMinOri);
 
-            RobotPose newPose = path[i];
+            RobotPose newPose = originalPath[i];
             for (int j = 0; j <= N; j++)
             {
                 upsampledPath.push_back(newPose);
@@ -482,9 +434,73 @@ namespace CBFCirc
             }
         }
 
-        upsampledPath.push_back(path[path.size() - 1]);
+        upsampledPath.push_back(originalPath[originalPath.size() - 1]);
 
         return upsampledPath;
+    }
+
+    FilterPathResult filterPath(vector<RobotPose> originalPath, Parameters param)
+    {
+        FilterPathResult fpr;
+
+        fpr.path = {};
+
+        for (int i = 0; i < originalPath.size(); i++)
+        {
+            VectorXd pos = VectorXd::Zero(3);
+            double ori = 0;
+            int lasti = originalPath.size() - 1;
+            int jmin = i < param.filterWindow ? 0 : i - param.filterWindow;
+            int jmax = i > lasti - param.filterWindow ? lasti : i + param.filterWindow;
+            double N = (double)(jmax - jmin) + 1;
+            for (int j = jmin; j <= jmax; j++)
+            {
+                pos += originalPath[j].position;
+                ori += originalPath[j].orientation;
+            }
+            pos = pos / N;
+            ori = ori / N;
+
+            RobotPose pose;
+            pose.position = pos;
+            pose.orientation = ori;
+            fpr.path.push_back(pose);
+        }
+
+        return fpr;
+    }
+
+    OptimizePathResult optimizePath(vector<RobotPose> originalPath, MapQuerier querier, Parameters param)
+    {
+
+        OptimizePathResult opr;
+
+        // Correct
+        auto start = high_resolution_clock::now();
+
+        CorrectPathResult cpr = correctPath(originalPath, querier, param);
+        vector<RobotPose> correctedPath = cpr.path;
+        opr.minDist = cpr.minDist;
+
+        opr.correctTime = elapsedTime(start);
+
+        // Simplify
+        start = high_resolution_clock::now();
+        vector<RobotPose> simplifiedPath = simplifyPath(correctedPath, querier, param).path;
+        opr.simplifyTime = elapsedTime(start);
+
+        // Upsample:
+        vector<RobotPose> upsampledPath = upsamplePath(simplifiedPath, param);
+
+        // Filter
+        start = high_resolution_clock::now();
+
+        vector<RobotPose> finalPath = filterPath(upsampledPath, param).path;
+
+        opr.filterTime = elapsedTime(start);
+
+        opr.path = finalPath;
+        return opr;
     }
 
     VectorFieldResult vectorField(RobotPose pose, vector<RobotPose> path, Parameters param)
@@ -541,8 +557,8 @@ namespace CBFCirc
         double H = sqrt(1 - (1 - VERYSMALLNUMBER) * G * G);
 
         // Compute the final vector field:
-        double s = ((double) ind)/((double) path.size());
-        double mult = s<0.9? 1.0: 10.0*(1.0-s);
+        double s = ((double)ind) / ((double)path.size());
+        double mult = s < 0.9 ? 1.0 : 10.0 * (1.0 - s);
 
         VectorXd v = param.maxTotalVel * (0.5 * G * N + mult * H * T);
 

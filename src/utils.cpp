@@ -10,6 +10,7 @@
 #include <memory>
 #include <numeric>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
 using namespace Eigen;
@@ -523,7 +524,7 @@ namespace CBFCirc
         vector<VectorXd> points = {};
 
         string line;
-        //getline(file, line);
+        // getline(file, line);
 
         while (getline(file, line))
         {
@@ -546,5 +547,12 @@ namespace CBFCirc
         }
 
         return points;
+    }
+
+    double elapsedTime(auto start)
+    {
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        return (double)duration.count() / E106;
     }
 }

@@ -8,6 +8,8 @@
 #include <vector>
 #include <random>
 #include <memory>
+#include <chrono>
+
 
 using namespace std;
 using namespace Eigen;
@@ -78,4 +80,5 @@ namespace CBFCirc
     int getMatrixNumber(Matrix3d omega);
     VectorXd vec3d(double x, double y, double z);
     vector<VectorXd> readCSV(string filePath, int dim);
+    double elapsedTime(auto start);
 }

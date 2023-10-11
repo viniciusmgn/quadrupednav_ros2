@@ -108,10 +108,8 @@ public:
     inline static vector<vector<VectorXd>> frontierPoints = {};
 
     inline static shared_timed_mutex mutexUpdateKDTree;
-    inline static mutex mutexReplanCommitedPath;
     inline static mutex mutexUpdateGraph;
     inline static mutex mutexFrontierPoints;
-    inline static shared_timed_mutex mutexGetLidarPoints;
 
     inline static vector<DataForDebug> dataForDebug = {};
     inline static Parameters param;
@@ -124,18 +122,18 @@ public:
     inline static NewExplorationPointResult explorationResult;
 
     inline static std::thread lowLevelMovementThread;
-    inline static std::thread replanOmegaThread;
-    inline static std::thread updateGraphThread;
-    inline static std::thread updateKDTreeThread;
     inline static std::thread transitionAlgThread;
-    inline static std::thread counterUpdateThread;
     inline static std::thread wholeAlgorithmThread;
     inline static std::thread storeDataThread;
 
     inline static bool asynchronousPlan = false;
+
+    inline static vector<double> updateKDTreeCallTime = {};
+    inline static vector<double> replanCommitedPathCallTime = {};
+    inline static vector<double> updateGraphCallTime = {};
 };
 
-struct Contour
+struct ContourResult
 {
     std::vector<cv::Point> external;              // Points at the outermost boundary
     std::vector<std::vector<cv::Point>> internal; // Points at the boundary of holes
@@ -156,7 +154,7 @@ public:
     rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr subEnd;
     std::shared_ptr<tf2_ros::TransformListener> tfListener{nullptr};
     std::unique_ptr<tf2_ros::Buffer> tfBuffer;
-    rclcpp::TimerBase::SharedPtr poseCallbackTimer,  mainLoopTimer, lowLevelTimer, replanningTimer, graphUpdateTimer, kdTreeTimer, transitionTimer;
+    rclcpp::TimerBase::SharedPtr poseCallbackTimer;
 
     CBFNavQuad();
     void storeData();
@@ -177,23 +175,19 @@ public:
     void updateKDTreeCall(bool forceRemove = false);
     void transitionAlg();
     void refreshWholeMapCall();
-
-    void debugTest();
-
-
-    // OCTOTREE
-    Contour ExtractContour(const cv::Mat &free, const cv::Point &origin);
-    void OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg);
-    double MilliSecondsSinceTime(const rclcpp::Time &start);
-    void VisualizeFrontierCall(const cv::Mat &free_map, const cv::Mat &occupied_map,
-                               const FindFrontierPointResult& frontier);
-    FindFrontierPointResult FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin);
+    ContourResult extractContour(const cv::Mat &free, const cv::Point &origin);
+    void octomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg);
+    double milliSecondsSinceTime(const rclcpp::Time &start);
+    void visualizeFrontierCall(const cv::Mat &free_map, const cv::Mat &occupied_map,
+                               const FindFrontierPointResult &frontier);
+    FindFrontierPointResult findFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin);
 
     // DEBUG
     void debug_addMessage(int counter, string msg);
     void debug_Store(int counter);
     void debug_generateManyPathsReport(int counter);
     static void debug_printAlgStateToMatlab(ofstream *f);
+    void debugTest();
 
 private:
     // Storage and mutex lock for the latest map received
@@ -207,5 +201,4 @@ private:
 
     // Subscribers & services
     rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octomap_subscriber_;
-
 };

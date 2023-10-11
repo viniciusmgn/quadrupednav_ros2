@@ -53,7 +53,7 @@ using std::placeholders::_1;
 using namespace boost;
 
 std::string debugging_folder = "/home/vinicius/Desktop/matlab/unitree_planning";
-//std::string debugging_folder = "/ros_ws/cbf_debugging";
+// std::string debugging_folder = "/ros_ws/cbf_debugging";
 
 CBFNavQuad::CBFNavQuad()
     : Node("cbfnavquad"),
@@ -72,7 +72,7 @@ CBFNavQuad::CBFNavQuad()
     // Octomap subscriber
     octomap_subscriber_ = this->create_subscription<octomap_msgs::msg::Octomap>(
         "octomap_binary", 1,
-        std::bind(&CBFNavQuad::OctomapCallback, this, std::placeholders::_1));
+        std::bind(&CBFNavQuad::octomapCallback, this, std::placeholders::_1));
 
     tfBuffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
@@ -253,17 +253,31 @@ void CBFNavQuad::wholeAlgorithm()
                 RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "omega = " << getMatrixName(Global::currentOmega));
             }
 
+            auto start = high_resolution_clock::now();
+
             if (Global::generalCounter % Global::param.updateKDTreeStep == 0)
                 updateKDTreeCall();
 
-            if (Global::generalCounter % Global::param.replanCommitedPathStep == 0 || Global::asynchronousPlan) 
+            Global::updateKDTreeCallTime.push_back(elapsedTime(start));
+
+            start = high_resolution_clock::now();
+
+            if (Global::generalCounter % Global::param.replanCommitedPathStep == 0 || Global::asynchronousPlan)
             {
                 Global::asynchronousPlan = false;
                 replanCommitedPathCall();
             }
 
+            Global::replanCommitedPathCallTime.push_back(elapsedTime(start));
+
+            auto start = high_resolution_clock::now();
+
             if (Global::generalCounter % Global::param.updateGraphStep == 0)
                 updateGraphCall();
+
+            Global::updateGraphCallTime.push_back(elapsedTime(start));
+
+
 
             Global::generalCounter++;
         }
@@ -303,7 +317,7 @@ void CBFNavQuad::updatePose()
     {
         geometry_msgs::msg::TransformStamped t;
         t = tfBuffer->lookupTransform("B1_154/odom_fast_lio", "B1_154/imu_link", tf2::TimePointZero);
-        //t = tfBuffer->lookupTransform("B1_154/odom_kiss_icp", "B1_154/base_link", tf2::TimePointZero);
+        // t = tfBuffer->lookupTransform("B1_154/odom_kiss_icp", "B1_154/base_link", tf2::TimePointZero);
 
         double px = t.transform.translation.x;
         double py = t.transform.translation.y;
@@ -381,14 +395,16 @@ void CBFNavQuad::setLinearVelocity(VectorXd linearVelocity)
 
 vector<vector<VectorXd>> CBFNavQuad::getFrontierPoints()
 {
-    vector<vector<VectorXd>> frontierPoints = getFrontierPointsHeight(Global::measuredHeight);
+    // CHANGE Global::measuredHeight TO GLOBAL::Global::param.constantHeight
+
+    vector<vector<VectorXd>> frontierPoints = getFrontierPointsHeight(Global::param.constantHeight);
 
     if (frontierPoints.size() == 0)
     {
-        frontierPoints = getFrontierPointsHeight(Global::measuredHeight - 0.2);
+        frontierPoints = getFrontierPointsHeight(Global::param.constantHeight - 0.2);
         if (frontierPoints.size() == 0)
         {
-            frontierPoints = getFrontierPointsHeight(Global::measuredHeight + 0.2);
+            frontierPoints = getFrontierPointsHeight(Global::param.constantHeight + 0.2);
 
             if (frontierPoints.size() == 0)
                 RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Tried everything... was not able to get frontier points.");
@@ -475,7 +491,7 @@ vector<vector<VectorXd>> CBFNavQuad::getFrontierPointsHeight(double height)
     // Frontier point extraction
     {
         // rclcpp::Time section = this->now();
-        ffpr = FindFrontierPoints(free_map, occupied_map, map_origin);
+        ffpr = findFrontierPoints(free_map, occupied_map, map_origin);
         // RCLCPP_DEBUG_STREAM(this->get_logger(), "Frontier idenfitication completed in "
         //                                             << MilliSecondsSinceTime(section)
         //                                             << " ms");
@@ -653,7 +669,6 @@ vector<VectorXd> CBFNavQuad::getLidarPointsKDTree(VectorXd position, double radi
         }
     }
 
-
     return points;
 }
 
@@ -681,11 +696,9 @@ void CBFNavQuad::lowLevelMovement()
                 Global::gradSafetyPosition = cccr.distanceResult.gradSafetyPosition;
                 Global::gradSafetyOrientation = cccr.distanceResult.gradSafetyOrientation;
                 Global::witnessDistance = cccr.distanceResult.witnessDistance;
-
             }
             else
                 setTwist(VectorXd::Zero(3), 0);
-            
         }
         this_thread::sleep_for(std::chrono::milliseconds(Global::param.sleepLowLevelControllerMs));
     }
@@ -726,7 +739,7 @@ void CBFNavQuad::replanCommitedPathCall()
         Global::commitedPath = opr.path;
         Global::currentOmega = gmpr.bestOmega;
 
-        debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctPathTime) + " s");
+        debug_addMessage(counter, "CorrectPathTime: " + std::to_string(opr.correctTime) + " s");
         debug_addMessage(counter, "SimplifyTime: " + std::to_string(opr.simplifyTime) + " s");
         debug_addMessage(counter, "FilterTime: " + std::to_string(opr.filterTime) + " s");
         debug_addMessage(counter, "PathSize: " + std::to_string(opr.path.size()) + " points");
@@ -824,10 +837,10 @@ void CBFNavQuad::replanCommitedPathCall()
 
                 if (gmpr.atLeastOnePathReached)
                 {
-                    //DEBUG
+                    // DEBUG
                     RCLCPP_INFO_STREAM(this->get_logger(), "Skipped travelling to graph!");
                     debug_addMessage(counter, "Skipped travelling to graph");
-                    //DEBUG
+                    // DEBUG
 
                     Global::explorationPosition = nepr.bestExplorationPosition;
                     Global::currentGoalPosition = nepr.bestExplorationPosition;
@@ -850,7 +863,6 @@ void CBFNavQuad::replanCommitedPathCall()
                     debug_addMessage(counter, "Store event: beginning to travel path");
                     // DEBUG
 
-
                     Global::asynchronousPlan = true;
                     Global::planningState = MotionPlanningState::pathToExploration;
                 }
@@ -869,8 +881,6 @@ void CBFNavQuad::replanCommitedPathCall()
         }
     }
 }
-
-
 
 void CBFNavQuad::updateGraphCall()
 {
@@ -1154,14 +1164,14 @@ void CBFNavQuad::transitionAlg()
 // OCTOMAP
 
 // Algorithm to extract the contours (inner & outer) of a given region
-Contour CBFNavQuad::ExtractContour(const cv::Mat &free, const cv::Point &origin)
+ContourResult CBFNavQuad::extractContour(const cv::Mat &free, const cv::Point &origin)
 {
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(free, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_NONE);
 
     // Select the contour containing the origin
-    Contour relevant_contour;
+    ContourResult relevant_contour;
     relevant_contour.valid = false;
 
     for (size_t i = 0; i < contours.size(); ++i)
@@ -1206,12 +1216,12 @@ Contour CBFNavQuad::ExtractContour(const cv::Mat &free, const cv::Point &origin)
     return relevant_contour;
 }
 
-double CBFNavQuad::MilliSecondsSinceTime(const rclcpp::Time &start)
+double CBFNavQuad::milliSecondsSinceTime(const rclcpp::Time &start)
 {
     return (this->now() - start).nanoseconds() * 1e-6;
 }
 
-void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg)
+void CBFNavQuad::octomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg)
 {
     // Reinitialize tree
     {
@@ -1223,7 +1233,7 @@ void CBFNavQuad::OctomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg
     }
 }
 
-void CBFNavQuad::VisualizeFrontierCall(
+void CBFNavQuad::visualizeFrontierCall(
     const cv::Mat &free_map,
     const cv::Mat &occupied_map,
     const FindFrontierPointResult &frontier)
@@ -1261,10 +1271,10 @@ void CBFNavQuad::VisualizeFrontierCall(
     debug_visualizer.publish(visMsg);
 }
 
-FindFrontierPointResult CBFNavQuad::FindFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin)
+FindFrontierPointResult CBFNavQuad::findFrontierPoints(const cv::Mat &free_map, const cv::Mat &occupied_map, const cv::Point &map_origin)
 {
     FindFrontierPointResult ffpr;
-    Contour contour = ExtractContour(free_map, map_origin);
+    ContourResult contour = extractContour(free_map, map_origin);
 
     // All external and internal points are at the boundary & are therefore valid
     // frontiers. Flatten the found contour
@@ -1429,6 +1439,10 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     *f << "commitedPos = processCell(load([dirData '/commitedPos.csv']));" << std::endl;
     *f << "commitedOri = processCell(load([dirData '/commitedOri.csv']));" << std::endl;
     *f << "explorationResultData = processCell(load([dirData '/explorationResultData.csv']));" << std::endl;
+
+    *f << "updateKDTreeCallTime = load([dirData '/updateKDTreeCallTime.csv']);" << std::endl;
+    *f << "replanCommitedPathCallTime = load([dirData '/replanCommitedPathCallTime.csv']);" << std::endl;
+    *f << "updateGraphCallTime = load([dirData '/updateGraphCallTime.csv']);" << std::endl;
 
     // Write planned paths
     vector<string> names = {};
@@ -1919,6 +1933,26 @@ void CBFNavQuad::debug_printAlgStateToMatlab(ofstream *f)
     f->flush();
     f->close();
 
+
+    // WRITE: updateKDTreeCallTime
+    f->open(debugging_folder + "/" + fname + "/updateKDTreeCallTime.csv", ofstream::trunc);
+    printVectorsToCSV(f, Global::updateKDTreeCallTime);
+    f->flush();
+    f->close();
+
+    // WRITE: replanCommitedPathCallTime
+    f->open(debugging_folder + "/" + fname + "/replanCommitedPathCallTime.csv", ofstream::trunc);
+    printVectorsToCSV(f, Global::replanCommitedPathCallTime);
+    f->flush();
+    f->close();
+
+    // WRITE: updateGraphCallTime
+    f->open(debugging_folder + "/" + fname + "/updateGraphCallTime.csv", ofstream::trunc);
+    printVectorsToCSV(f, Global::updateGraphCallTime);
+    f->flush();
+    f->close();
+
+
     // WRITE: messages
     f->open(debugging_folder + "/" + fname + "/messages.csv", ofstream::trunc);
     for (int j = 0; j < Global::messages.size(); j++)
@@ -1935,13 +1969,13 @@ int main(int argc, char *argv[])
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<CBFNavQuad>());
 
-    if (Global::planningState == MotionPlanningState::success)
-    {
-        cout << "Started printing data" << std::endl;
-        ofstream file;
-        CBFNavQuad::debug_printAlgStateToMatlab(&file);
-        cout << "Debug data printed!" << std::endl;
-    }
+    // if (Global::planningState == MotionPlanningState::success)
+    // {
+    //     cout << "Started printing data" << std::endl;
+    //     ofstream file;
+    //     CBFNavQuad::debug_printAlgStateToMatlab(&file);
+    //     cout << "Debug data printed!" << std::endl;
+    // }
 
     RCLCPP_INFO_STREAM(rclcpp::get_logger("rclcpp"), "Outside loop");
 
@@ -1949,12 +1983,6 @@ int main(int argc, char *argv[])
 
     Global::lowLevelMovementThread.join();
     cout << "lowLevelMovementThread joined" << std::endl;
-    Global::replanOmegaThread.join();
-    cout << "replanOmegaThread joined" << std::endl;
-    Global::updateGraphThread.join();
-    cout << "updateGraphThread joined" << std::endl;
-    Global::updateKDTreeThread.join();
-    cout << "updateKDTreeThread joined" << std::endl;
     Global::transitionAlgThread.join();
     cout << "transitionAlgThread joined" << std::endl;
 
