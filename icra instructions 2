@@ -1,0 +1,75 @@
+inside cair_unitree_icra2023_sim folder:
+
+docker compose run --rm -e ENABLE_GUI=true cair_unitree_icra2023_sim
+
+ros2 run cbfquadnav controller --ros-args -r __ns:=/B1_154
+
+docker kill cair_unitree_icra2023_sim-cair_unitree_icra2023_sim-run-2912ae8dad9d
+
+
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug
+ros2 run --prefix 'gdbserver localhost:3000' cbfquadnav controller --ros-args -r __ns:=/B1_154
+
+
+## PUSHING DOCKER IMAGE TO THE ROBOT
+Make sure you are in the robot's network
+
+cd ~/Desktop/unitree-icra2023-docker/icra2023_docker_images
+docker compose build cair_unitree_icra2023 && docker tag cair_unitree_icra2023 unitree:5000/cair_unitree_icra2023 && docker push unitree:5000/cair_unitree_icra2023
+
+
+## STARTING THE DOCKER CONTAINER IN THE ROBOT
+ssh unitree@192.168.123.220
+cd icra2023
+tmux
+
+>> This opens a new tmux session. There, run
+
+docker pull unitree:5000/cair_unitree_icra2023 && docker compose run --rm cair_unitree_icra2023
+
+>> This will spin all the nodes that do mapping, localization, etc including cbf. But it will not move. Once you confirm the output is OK, run this on a terminal inside your laptop
+
+ros2 service call /B1_154/change_operation_mode cair_unitree_interfaces/srv/ChangeOperationMode "target_mode: 1"
+
+>> This will make the robot listen to /B1_154/cmd_vel commands and make it move
+
+rsync -azv unitree@192.168.123.220:~/icra2023/cbf_debugging /home/vinicius/ros2_ws/debugging/
+
+
+put legs down
+TURN IT ON: PRESS RELEASE HOLD battery
+WAIT BEFORE STAND
+PRESS START
+
+Motion JPEG AVI
+
+TURN IT OFF:
+L2 and A twice
+ssh unitree@192.168.123.220
+soft_shutdown
+TURN IT ON: PRESS RELEASE HOLD battery
+
+
+csvwrite('/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataEnvironments.csv',pointsKDTree{i});
+csvwrite('/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataExploration.csv',explorationResultData{i}(:,1:3));
+csvwrite('/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataGraphEdge.csv',graphEdges{i});
+csvwrite('/home/vinicius/Desktop/matlab/unitree_planning/debugTests/dataGraphNode.csv',graphNodes{i});
+
+csvwrite('/home/vinicius/Desktop/matlab/unitree_planning/debugTests/pose.csv',[position(i,:) orientation(i)]);
+
+
+# Alternative to record debug data for octomap
+ssh unitree@192.168.123.25
+cd ros2_logging
+tmux
+docker-compose pull && docker-compose run --rm cair_unitree_ros2_recorder
+ros2 bag record /B1_154/octomap_binary /B1_154/fast_lio_odometry /tf /tf_static /B1_154/frontier_debug
+
+
+
+ssh vmg6973@jubail.abudhabi.nyu.edu
+loginpassvmg*1 
+
+cp
+dmfget -d || from tape to normal
+dmfls 
